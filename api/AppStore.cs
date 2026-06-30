@@ -1,6 +1,5 @@
 using Npgsql;
 
-
 namespace Pcsp.Api;
 
 /// <summary>
@@ -620,9 +619,6 @@ public sealed class AppStore
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-            PRAGMA busy_timeout = 5000;
-            PRAGMA journal_mode = WAL;
-            PRAGMA foreign_keys = ON;
             CREATE TABLE IF NOT EXISTS Edital (
                 Id TEXT PRIMARY KEY,
                 Fechada INTEGER NOT NULL,
@@ -683,7 +679,7 @@ public sealed class AppStore
                 QuestaoId TEXT NOT NULL,
                 Area TEXT NOT NULL,
                 Resposta TEXT NOT NULL,
-                Nota REAL,
+                Nota DOUBLE PRECISION,
                 NotaMaxima INTEGER NOT NULL,
                 Status TEXT NOT NULL,
                 CorrigidaEm TEXT,
@@ -693,7 +689,7 @@ public sealed class AppStore
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>Grava o estado de forma atômica em SQLite.</summary>
+    /// <summary>Grava o estado de forma atômica em PostgreSQL.</summary>
     private void Salvar()
     {
         try

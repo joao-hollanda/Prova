@@ -57,8 +57,8 @@ Discord e nome)"*.
 
 ## 📦 Persistência
 
-Estado (edital, inscrições, resultados, sorteio e correções discursivas) é gravado em SQLite.
-Por padrão o arquivo fica em `api/App_Data/state.db`; em hospedagem, defina `DATA_DIR` para uma pasta/volume persistente (ex.: `/data`) ou use `Data:ConnectionString`. Para zerar tudo, pare a aplicação e apague o `state.db`.
+Estado (edital, inscrições, resultados, sorteio e correções discursivas) é gravado em PostgreSQL.
+Em hospedagem, configure `DATABASE_URL`, `POSTGRES_CONNECTION_STRING` ou `Data:ConnectionString` com a conexão do banco.
 
 ## 🔌 Endpoints
 

@@ -4,9 +4,11 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Pcsp.Api;
 
+LoadLocalEnv();
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Porta: PaaS (Railway/Render/Fly) injeta PORT. Sem PORT, cai no appsettings (localhost:5000).
+// Porta: PaaS (Railway/Render/Fly) injeta PORT. Sem PORT, usa a configuração local de desenvolvimento.
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(port))
     builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -118,3 +120,29 @@ app.Run();
 
 static string IpDe(HttpContext ctx) =>
     ctx.Connection.RemoteIpAddress?.ToString() ?? "desconhecido";
+
+static void LoadLocalEnv()
+{
+    var dirs = new[]
+    {
+        Directory.GetCurrentDirectory(),
+        Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..")),
+    };
+
+    var envPath = dirs.Select(dir => Path.Combine(dir, ".env")).FirstOrDefault(File.Exists);
+    if (envPath is null) return;
+
+    foreach (var rawLine in File.ReadAllLines(envPath))
+    {
+        var line = rawLine.Trim();
+        if (line.Length == 0 || line.StartsWith('#')) continue;
+
+        var equals = line.IndexOf('=');
+        if (equals <= 0) continue;
+
+        var key = line[..equals].Trim();
+        var value = line[(equals + 1)..].Trim().Trim('"');
+        if (Environment.GetEnvironmentVariable(key) is null)
+            Environment.SetEnvironmentVariable(key, value);
+    }
+}

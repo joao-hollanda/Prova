@@ -22,8 +22,7 @@ RUN dotnet publish api/Pcsp.Api.csproj -c Release -o /app /p:UseAppHost=false
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 COPY --from=api /app ./
-# A maioria das PaaS injeta PORT; default 8080. DATA_DIR deve apontar p/ um volume persistente.
+# A maioria das PaaS injeta PORT; default 8080. O banco vem de DATABASE_URL/POSTGRES_CONNECTION_STRING.
 ENV PORT=8080
-ENV DATA_DIR=/data
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Pcsp.Api.dll"]
