@@ -1,0 +1,13 @@
+.git
+node_modules
+dist
+.env
+.env.local
+*.local
+api/bin
+api/obj
+api/wwwroot
+**/App_Data
+*.log
+.vscode
+.claude

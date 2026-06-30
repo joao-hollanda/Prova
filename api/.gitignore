@@ -1,0 +1,5 @@
+bin/
+obj/
+# Estado persistido em runtime (inscrições/resultados). Não versionar.
+App_Data/
+*.user

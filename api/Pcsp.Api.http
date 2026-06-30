@@ -1,0 +1,90 @@
+@base = http://localhost:5000/api
+@adminToken = PCESP@ILHASP
+
+### Status da prova (público)
+GET {{base}}/admin/prova/status
+
+### Buscar prova (sem gabarito)
+GET {{base}}/provas/agente
+
+### Criar inscrição
+# @name inscricao
+POST {{base}}/inscricoes
+Content-Type: application/json
+
+{
+  "nome": "João da Silva",
+  "email": "joao@exemplo.com",
+  "idade": 25,
+  "cpf": "123456789012345678",
+  "carreira": "agente"
+}
+
+### Enviar respostas (usa o id da inscrição acima)
+POST {{base}}/provas/agente/respostas
+Content-Type: application/json
+
+{
+  "inscricaoId": "{{inscricao.response.body.id}}",
+  "carreiraId": "agente",
+  "respostas": { "pt-01": "b", "mat-01": "b", "disc-comum-01": "Texto da redação..." },
+  "tempoGastoSegundos": 1830,
+  "finalizadaPor": "manual"
+}
+
+### Ranking (protegido)
+GET {{base}}/admin/resultados
+X-Admin-Token: {{adminToken}}
+
+### Fechar a prova (protegido)
+POST {{base}}/admin/prova/status
+Content-Type: application/json
+X-Admin-Token: {{adminToken}}
+
+{ "fechada": true }
+
+### Reabrir a prova (protegido)
+POST {{base}}/admin/prova/status
+Content-Type: application/json
+X-Admin-Token: {{adminToken}}
+
+{ "fechada": false }
+
+### Iniciar novo edital — reseta a regra de tentativa única (protegido)
+POST {{base}}/admin/edital/novo
+Content-Type: application/json
+X-Admin-Token: {{adminToken}}
+
+{ "id": "PCSP-2026-2" }
+
+### Configuração da prova (público)
+GET {{base}}/config
+
+### Atualizar configuração — vagas / qtd. questões / nota de corte / duração (protegido)
+POST {{base}}/admin/config
+Content-Type: application/json
+X-Admin-Token: {{adminToken}}
+
+{
+  "notaDeCorte": 65,
+  "quantidadeObjetivas": 10,
+  "quantidadeDiscursivas": 1,
+  "carreiras": [
+    { "id": "agente", "vagas": 5, "duracaoMinutos": 90 }
+  ]
+}
+
+### Sortear a prova (mesma para todos) + sugerir nota de corte (protegido)
+POST {{base}}/admin/prova/sortear
+X-Admin-Token: {{adminToken}}
+
+### Listar discursivas para correção (protegido)
+GET {{base}}/admin/discursivas
+X-Admin-Token: {{adminToken}}
+
+### Lançar nota de uma discursiva (protegido)
+POST {{base}}/admin/discursivas/corrigir
+Content-Type: application/json
+X-Admin-Token: {{adminToken}}
+
+{ "inscricaoId": "<guid>", "questaoId": "disc-comum-01", "nota": 8.5, "status": "CORRIGIDA" }

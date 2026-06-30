@@ -1,0 +1,96 @@
+# API — Concurso PCSP (RP) · ASP.NET Core (.NET 9)
+
+Backend C# que implementa o contrato esperado pelo front React (`../src/api/`). Faz a
+correção da prova **no servidor** (o gabarito nunca sai daqui) e garante **uma única
+tentativa por edital** por candidato.
+
+## ▶️ Como rodar
+
+```bash
+cd api
+dotnet run
+```
+
+A API sobe em `http://localhost:5000` e expõe os endpoints sob `/api`.
+
+Para o front consumir a API real, crie `../.env` (copie de `../.env.example`) com:
+
+```env
+VITE_USE_MOCK=false
+VITE_API_URL=http://localhost:5000/api
+VITE_ADMIN_SENHA=pcsp2026   # precisa ser IGUAL ao Admin:Token do backend
+```
+
+## 🔐 Segurança aplicada (nível "anti-curioso", não militar)
+
+| Medida | Onde |
+|---|---|
+| **CORS restrito** às origens do front (nunca `*`) | `Program.cs` / `appsettings.json` → `Cors:AllowedOrigins` |
+| **Rate limiting por IP** (120/min geral, 12/min em escrita) | `Program.cs` → `RateLimit:*` |
+| **Validação server-side** de todos os campos (não confia no cliente) | `Validacoes.cs` |
+| **Limite de corpo** da requisição (64 KB) + teto de tamanho/quantidade de respostas | `Program.cs`, `Validacoes.cs` |
+| **Gabarito nunca exposto** — removido da prova e da correção | `Models.cs` (`ToPublica`), `Catalogo.cs` |
+| **Correção no servidor** (cliente só manda respostas) | `Catalogo.cs` → `Correcao` |
+| **Painel protegido por token** (`X-Admin-Token`, comparação em tempo constante) | `Endpoints.cs` → `GuardaAdmin` |
+| **Identidade vinda da inscrição** no envio (ignora o `candidato` do cliente) | `AppStore.RegistrarResultado` |
+| **Erros genéricos** (sem stack trace) + headers de segurança | `Program.cs` |
+
+> ⚠️ Como é uma SPA, o token do admin acaba embutido no bundle do front. Para segurança
+> real, troque `Admin:Token` por um segredo forte e use um login de verdade no backend.
+> Para o uso em RP, o token + CORS + rate limit já impedem o "usuário comum" de bisbilhotar.
+
+## 🎯 Regra de tentativa única por edital
+
+Pedido: *"uma pessoa não pode realizar mais de uma tentativa por edital (valida por ID do
+Discord e nome)"*.
+
+- Um **resultado enviado** = uma tentativa. A checagem é feita de forma **atômica** (sob lock)
+  na inscrição **e** no envio da prova.
+- Bloqueia se, no edital atual, já existir tentativa com o **mesmo ID do Discord** *OU* o
+  **mesmo nome** (normalizado: sem acentos, minúsculo, espaços colapsados). Assim não dá para
+  burlar trocando só o nome nem usando uma conta alternativa com o mesmo nome.
+- A **identidade** considerada no envio vem da inscrição salva no servidor — o cliente não
+  consegue forjar nome/ID no momento de enviar.
+- **Trocar de edital reseta a regra**: `POST /api/admin/edital/novo` inicia um novo ciclo
+  (ou altere `Edital:Id` em `appsettings.json`). Resultados antigos ficam no histórico, fora
+  do ranking atual.
+
+## 📦 Persistência
+
+Estado (edital, inscrições, resultados) é gravado em `api/App_Data/state.json` de forma atômica.
+Sobrevive a reinícios. Apague o arquivo para zerar tudo. (A pasta `App_Data/` é git-ignored.)
+
+## 🔌 Endpoints
+
+| Método | Rota | Auth | Descrição |
+|---|---|---|---|
+| `POST` | `/api/inscricoes` | — | Cria inscrição (valida + tentativa única) |
+| `GET`  | `/api/provas/{carreiraId}` | — | Prova ATIVA do cargo (sorteada, sem gabarito) |
+| `POST` | `/api/provas/{carreiraId}/respostas` | — | Envia respostas → correção |
+| `GET`  | `/api/config` | — | Configuração efetiva (vagas/duração/nota) — público |
+| `GET`  | `/api/admin/prova/status` | — | Status (aberto/fechado) — público |
+| `GET`  | `/api/admin/resultados` | `X-Admin-Token` | Ranking do edital atual (PII) |
+| `POST` | `/api/admin/prova/status` | `X-Admin-Token` | Abre/fecha a prova |
+| `POST` | `/api/admin/config` | `X-Admin-Token` | Edita vagas, qtd. questões, nota de corte, duração |
+| `POST` | `/api/admin/prova/sortear` | `X-Admin-Token` | Sorteia a prova + sugere nota de corte |
+| `GET`  | `/api/admin/discursivas` | `X-Admin-Token` | Lista discursivas para correção |
+| `POST` | `/api/admin/discursivas/corrigir` | `X-Admin-Token` | Lança a nota de uma discursiva |
+| `POST` | `/api/admin/edital/novo` | `X-Admin-Token` | Inicia novo edital (reseta tentativas) |
+
+Veja `Pcsp.Api.http` para exemplos prontos de cada chamada.
+
+## ⚙️ Configuração, sorteio e dificuldade
+
+- O painel admin edita **vagas** (por cargo), **quantidade de questões** (objetivas/discursivas),
+  **nota de corte** e **duração** (por cargo). A correção e a prova passam a usar esses valores.
+- Cada questão tem um **nível de dificuldade** (`facil`/`medio`/`dificil`) definido no servidor
+  (`Data/Catalogo.cs`).
+- **Sortear** (`/admin/prova/sortear`) escolhe aleatoriamente N objetivas + M discursivas por cargo
+  e **fixa essa seleção** — a prova é a **mesma para todos** os candidatos do edital. Com base na
+  dificuldade das objetivas sorteadas, sugere uma **nota de corte** (prova fácil → corte mais alto;
+  difícil → mais baixo). A sugestão é informativa; aplica-se ao salvar a configuração.
+- Sem sorteio ativo, a prova é o banco completo (comportamento padrão).
+
+## 🔑 Senha do painel
+
+`Admin:Token` = `PCESP@ILHASP` (em `appsettings.json`). Deve ser igual ao `VITE_ADMIN_SENHA` do front.
