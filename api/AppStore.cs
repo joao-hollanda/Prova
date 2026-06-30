@@ -1,36 +1,53 @@
-using System.Text.Json;
+using Npgsql;
+
 
 namespace Pcsp.Api;
 
 /// <summary>
-/// Repositório em memória com persistência atômica em JSON (data/state.json).
-/// Simples e suficiente para o contexto de RP — sem dependências de banco.
-/// Todas as operações que leem+escrevem (regra de tentativa única, status) são
-/// serializadas por um lock, evitando corridas mesmo sob requisições simultâneas.
+/// Repositório com persistência em PostgreSQL.
+/// A conexão vem de Data:ConnectionString, POSTGRES_CONNECTION_STRING ou DATABASE_URL.
+/// Todas as operações que leem+escrevem são serializadas por um lock.
 /// </summary>
 public sealed class AppStore
 {
     private readonly object _lock = new();
-    private readonly string _arquivo;
+    private readonly NpgsqlConnection _connection;
+    private readonly string _database;
     private readonly ILogger<AppStore> _log;
     private EstadoPersistente _estado;
 
-    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-    };
 
     public AppStore(IConfiguration cfg, IHostEnvironment env, ILogger<AppStore> log)
     {
         _log = log;
-        // Em produção (PaaS), aponte para um volume persistente via Data:Dir ou env DATA_DIR.
-        // Local: "App_Data" (não usar "data" — em FS case-insensitive colidiria com a pasta-fonte "Data/").
-        var dir = cfg["Data:Dir"];
-        if (string.IsNullOrWhiteSpace(dir)) dir = Environment.GetEnvironmentVariable("DATA_DIR");
-        if (string.IsNullOrWhiteSpace(dir)) dir = Path.Combine(env.ContentRootPath, "App_Data");
-        Directory.CreateDirectory(dir);
-        _arquivo = Path.Combine(dir, "state.json");
+
+        var connectionString = cfg["Data:ConnectionString"];
+        if (string.IsNullOrWhiteSpace(connectionString))
+            connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Configure Data:ConnectionString, POSTGRES_CONNECTION_STRING ou DATABASE_URL com a conexão do PostgreSQL.");
+        }
+
+        connectionString = NormalizePostgresConnectionString(connectionString);
+        var builder = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Timeout = 15,
+            CommandTimeout = 30,
+            Pooling = true,
+        };
+
+        _database = builder.Database ?? "PostgreSQL";
+        _connection = new NpgsqlConnection(builder.ConnectionString);
+        _connection.Open();
+        InitializeDatabase();
         _estado = Carregar(cfg);
+        SeedConfig(_estado);
+        Salvar();
     }
 
     // ------------------------------------------------------------------ leitura
@@ -415,35 +432,176 @@ public sealed class AppStore
 
     private EstadoPersistente Carregar(IConfiguration cfg)
     {
-        if (File.Exists(_arquivo))
+        var e = new EstadoPersistente
         {
-            try
-            {
-                var json = File.ReadAllText(_arquivo);
-                var e = JsonSerializer.Deserialize<EstadoPersistente>(json, JsonOpts);
-                if (e?.Edital is not null && !string.IsNullOrWhiteSpace(e.Edital.Id))
-                {
-                    SeedConfig(e);
-                    return e;
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Estado persistido inválido em {Arquivo}; reiniciando.", _arquivo);
-            }
-        }
-
-        var editalId = cfg["Edital:Id"];
-        if (string.IsNullOrWhiteSpace(editalId)) editalId = $"PCSP-{DateTime.UtcNow.Year}";
-
-        var novo = new EstadoPersistente
-        {
-            Edital = new EditalState { Id = editalId, Fechada = false, AtualizadoEm = null },
+            Edital = new EditalState(),
+            Config = new ProvaConfig(),
             Inscricoes = new(),
             Resultados = new(),
         };
-        SeedConfig(novo);
-        return novo;
+
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Id, Fechada, AtualizadoEm FROM Edital LIMIT 1";
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+            {
+                e.Edital.Id = reader.GetString(0);
+                e.Edital.Fechada = reader.GetInt32(1) == 1;
+                e.Edital.AtualizadoEm = reader.IsDBNull(2) ? null : DateTimeOffset.Parse(reader.GetString(2));
+            }
+            else
+            {
+                var editalId = cfg["Edital:Id"];
+                if (string.IsNullOrWhiteSpace(editalId)) editalId = $"PCSP-{DateTime.UtcNow.Year}";
+                e.Edital = new EditalState { Id = editalId, Fechada = false, AtualizadoEm = null };
+                return e;
+            }
+        }
+
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT NotaDeCorte, QuantidadeObjetivas, QuantidadeDiscursivas FROM ConfigGlobal WHERE Id = 1 LIMIT 1";
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+            {
+                e.Config.NotaDeCorte = reader.GetInt32(0);
+                e.Config.QuantidadeObjetivas = reader.GetInt32(1);
+                e.Config.QuantidadeDiscursivas = reader.GetInt32(2);
+            }
+        }
+
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT CarreiraId, Vagas, DuracaoMinutos FROM ConfigCarreira";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                e.Config.Carreiras[reader.GetString(0)] = new ConfigCarreira
+                {
+                    Vagas = reader.GetInt32(1),
+                    DuracaoMinutos = reader.GetInt32(2),
+                };
+            }
+        }
+
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT SorteadaEm, NotaDeCorteSugerida FROM Selecao WHERE Id = 1 LIMIT 1";
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+            {
+                var selecao = new ProvaSelecionada
+                {
+                    SorteadaEm = reader.IsDBNull(0) ? DateTimeOffset.MinValue : DateTimeOffset.Parse(reader.GetString(0)),
+                    NotaDeCorteSugerida = reader.GetInt32(1),
+                };
+                e.Selecao = selecao;
+            }
+        }
+
+        if (e.Selecao is not null)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = @"SELECT CarreiraId, QuestaoId FROM SelecaoItem ORDER BY CarreiraId, Ordem";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var carreiraId = reader.GetString(0);
+                var questaoId = reader.GetString(1);
+                if (!e.Selecao.PorCarreira.TryGetValue(carreiraId, out var lista))
+                {
+                    lista = new List<string>();
+                    e.Selecao.PorCarreira[carreiraId] = lista;
+                }
+                lista.Add(questaoId);
+            }
+        }
+
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT Id, Nome, Email, Idade, Cpf, Carreira, Protocolo, CriadoEm, EditalId
+                                FROM Inscricoes";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                e.Inscricoes.Add(new InscricaoRecord
+                {
+                    Id = reader.GetString(0),
+                    Nome = reader.GetString(1),
+                    Email = reader.GetString(2),
+                    Idade = reader.GetInt32(3),
+                    Cpf = reader.GetString(4),
+                    Carreira = reader.GetString(5),
+                    Protocolo = reader.GetString(6),
+                    CriadoEm = DateTimeOffset.Parse(reader.GetString(7)),
+                    EditalId = reader.GetString(8),
+                });
+            }
+        }
+
+        var discursivasPorInscricao = new Dictionary<string, List<DiscursivaRespostaRecord>>(StringComparer.Ordinal);
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT InscricaoId, QuestaoId, Area, Resposta, Nota, NotaMaxima, Status, CorrigidaEm
+                                FROM Discursivas";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var inscricaoId = reader.GetString(0);
+                if (!discursivasPorInscricao.TryGetValue(inscricaoId, out var lista))
+                {
+                    lista = new List<DiscursivaRespostaRecord>();
+                    discursivasPorInscricao[inscricaoId] = lista;
+                }
+                lista.Add(new DiscursivaRespostaRecord
+                {
+                    QuestaoId = reader.GetString(1),
+                    Area = reader.GetString(2),
+                    Resposta = reader.GetString(3),
+                    Nota = reader.IsDBNull(4) ? null : reader.GetDouble(4),
+                    NotaMaxima = reader.GetInt32(5),
+                    Status = reader.GetString(6),
+                    CorrigidaEm = reader.IsDBNull(7) ? null : DateTimeOffset.Parse(reader.GetString(7)),
+                });
+            }
+        }
+
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT InscricaoId, Nome, Email, Idade, Cpf, CarreiraId, CarreiraNome,
+                                       Percentual, Acertos, Total, AprovadoPreliminar, TempoGastoSegundos,
+                                       EnviadoEm, EditalId, NomeNormalizado
+                                FROM Resultados";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var inscricaoId = reader.GetString(0);
+                var resultado = new ResultadoRecord
+                {
+                    InscricaoId = inscricaoId,
+                    Nome = reader.GetString(1),
+                    Email = reader.GetString(2),
+                    Idade = reader.GetInt32(3),
+                    Cpf = reader.GetString(4),
+                    CarreiraId = reader.GetString(5),
+                    CarreiraNome = reader.GetString(6),
+                    Percentual = reader.GetInt32(7),
+                    Acertos = reader.GetInt32(8),
+                    Total = reader.GetInt32(9),
+                    AprovadoPreliminar = reader.GetInt32(10) == 1,
+                    TempoGastoSegundos = reader.IsDBNull(11) ? null : reader.GetInt32(11),
+                    EnviadoEm = DateTimeOffset.Parse(reader.GetString(12)),
+                    EditalId = reader.GetString(13),
+                    NomeNormalizado = reader.GetString(14),
+                };
+                if (discursivasPorInscricao.TryGetValue(inscricaoId, out var lista))
+                    resultado.Discursivas = lista;
+                e.Resultados.Add(resultado);
+            }
+        }
+
+        return e;
     }
 
     /// <summary>Garante valores padrão de configuração por carreira (vagas/duração).</summary>
@@ -458,18 +616,273 @@ public sealed class AppStore
         }
     }
 
-    /// <summary>Grava o estado de forma atômica (escreve em .tmp e renomeia).</summary>
+    private void InitializeDatabase()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            PRAGMA busy_timeout = 5000;
+            PRAGMA journal_mode = WAL;
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE IF NOT EXISTS Edital (
+                Id TEXT PRIMARY KEY,
+                Fechada INTEGER NOT NULL,
+                AtualizadoEm TEXT
+            );
+            CREATE TABLE IF NOT EXISTS ConfigGlobal (
+                Id INTEGER PRIMARY KEY CHECK(Id = 1),
+                NotaDeCorte INTEGER NOT NULL,
+                QuantidadeObjetivas INTEGER NOT NULL,
+                QuantidadeDiscursivas INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ConfigCarreira (
+                CarreiraId TEXT PRIMARY KEY,
+                Vagas INTEGER NOT NULL,
+                DuracaoMinutos INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS Selecao (
+                Id INTEGER PRIMARY KEY CHECK(Id = 1),
+                SorteadaEm TEXT,
+                NotaDeCorteSugerida INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS SelecaoItem (
+                CarreiraId TEXT NOT NULL,
+                QuestaoId TEXT NOT NULL,
+                Ordem INTEGER NOT NULL,
+                PRIMARY KEY (CarreiraId, Ordem)
+            );
+            CREATE TABLE IF NOT EXISTS Inscricoes (
+                Id TEXT PRIMARY KEY,
+                Nome TEXT NOT NULL,
+                Email TEXT NOT NULL,
+                Idade INTEGER NOT NULL,
+                Cpf TEXT NOT NULL,
+                Carreira TEXT NOT NULL,
+                Protocolo TEXT NOT NULL,
+                CriadoEm TEXT NOT NULL,
+                EditalId TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS Resultados (
+                InscricaoId TEXT PRIMARY KEY,
+                Nome TEXT NOT NULL,
+                Email TEXT NOT NULL,
+                Idade INTEGER NOT NULL,
+                Cpf TEXT NOT NULL,
+                CarreiraId TEXT NOT NULL,
+                CarreiraNome TEXT NOT NULL,
+                Percentual INTEGER NOT NULL,
+                Acertos INTEGER NOT NULL,
+                Total INTEGER NOT NULL,
+                AprovadoPreliminar INTEGER NOT NULL,
+                TempoGastoSegundos INTEGER,
+                EnviadoEm TEXT NOT NULL,
+                EditalId TEXT NOT NULL,
+                NomeNormalizado TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS Discursivas (
+                InscricaoId TEXT NOT NULL,
+                QuestaoId TEXT NOT NULL,
+                Area TEXT NOT NULL,
+                Resposta TEXT NOT NULL,
+                Nota REAL,
+                NotaMaxima INTEGER NOT NULL,
+                Status TEXT NOT NULL,
+                CorrigidaEm TEXT,
+                PRIMARY KEY (InscricaoId, QuestaoId)
+            );
+        ";
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Grava o estado de forma atômica em SQLite.</summary>
     private void Salvar()
     {
         try
         {
-            var tmp = _arquivo + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(_estado, JsonOpts));
-            File.Move(tmp, _arquivo, overwrite: true);
+            using var tx = _connection.BeginTransaction();
+            ExecuteNonQuery(@"INSERT INTO Edital (Id, Fechada, AtualizadoEm)
+                               VALUES (@Id, @Fechada, @AtualizadoEm)
+                               ON CONFLICT (Id) DO UPDATE SET
+                                   Fechada = EXCLUDED.Fechada,
+                                   AtualizadoEm = EXCLUDED.AtualizadoEm",
+                new Dictionary<string, object?>
+                {
+                    ["@Id"] = _estado.Edital.Id,
+                    ["@Fechada"] = BoolToInt(_estado.Edital.Fechada),
+                    ["@AtualizadoEm"] = _estado.Edital.AtualizadoEm?.ToString("o"),
+                }, tx);
+
+            ExecuteNonQuery(@"INSERT INTO ConfigGlobal (Id, NotaDeCorte, QuantidadeObjetivas, QuantidadeDiscursivas)
+                               VALUES (1, @NotaDeCorte, @QuantidadeObjetivas, @QuantidadeDiscursivas)
+                               ON CONFLICT (Id) DO UPDATE SET
+                                   NotaDeCorte = EXCLUDED.NotaDeCorte,
+                                   QuantidadeObjetivas = EXCLUDED.QuantidadeObjetivas,
+                                   QuantidadeDiscursivas = EXCLUDED.QuantidadeDiscursivas",
+                new Dictionary<string, object?>
+                {
+                    ["@NotaDeCorte"] = _estado.Config.NotaDeCorte,
+                    ["@QuantidadeObjetivas"] = _estado.Config.QuantidadeObjetivas,
+                    ["@QuantidadeDiscursivas"] = _estado.Config.QuantidadeDiscursivas,
+                }, tx);
+
+            ExecuteNonQuery("DELETE FROM ConfigCarreira", null, tx);
+            foreach (var kv in _estado.Config.Carreiras)
+            {
+                ExecuteNonQuery(@"INSERT INTO ConfigCarreira (CarreiraId, Vagas, DuracaoMinutos)
+                                   VALUES (@CarreiraId, @Vagas, @DuracaoMinutos)",
+                    new Dictionary<string, object?>
+                    {
+                        ["@CarreiraId"] = kv.Key,
+                        ["@Vagas"] = kv.Value.Vagas,
+                        ["@DuracaoMinutos"] = kv.Value.DuracaoMinutos,
+                    }, tx);
+            }
+
+            ExecuteNonQuery("DELETE FROM SelecaoItem", null, tx);
+            ExecuteNonQuery("DELETE FROM Selecao", null, tx);
+            if (_estado.Selecao is not null)
+            {
+                ExecuteNonQuery(@"INSERT INTO Selecao (Id, SorteadaEm, NotaDeCorteSugerida)
+                                   VALUES (1, @SorteadaEm, @NotaDeCorteSugerida)",
+                    new Dictionary<string, object?>
+                    {
+                        ["@SorteadaEm"] = _estado.Selecao.SorteadaEm.ToString("o"),
+                        ["@NotaDeCorteSugerida"] = _estado.Selecao.NotaDeCorteSugerida,
+                    }, tx);
+
+                foreach (var kv in _estado.Selecao.PorCarreira)
+                {
+                    for (var index = 0; index < kv.Value.Count; index++)
+                    {
+                        ExecuteNonQuery(@"INSERT INTO SelecaoItem (CarreiraId, QuestaoId, Ordem)
+                                           VALUES (@CarreiraId, @QuestaoId, @Ordem)",
+                            new Dictionary<string, object?>
+                            {
+                                ["@CarreiraId"] = kv.Key,
+                                ["@QuestaoId"] = kv.Value[index],
+                                ["@Ordem"] = index,
+                            }, tx);
+                    }
+                }
+            }
+
+            ExecuteNonQuery("DELETE FROM Discursivas", null, tx);
+            ExecuteNonQuery("DELETE FROM Resultados", null, tx);
+            ExecuteNonQuery("DELETE FROM Inscricoes", null, tx);
+
+            foreach (var inscricao in _estado.Inscricoes)
+            {
+                ExecuteNonQuery(@"INSERT INTO Inscricoes (Id, Nome, Email, Idade, Cpf, Carreira, Protocolo, CriadoEm, EditalId)
+                                   VALUES (@Id, @Nome, @Email, @Idade, @Cpf, @Carreira, @Protocolo, @CriadoEm, @EditalId)",
+                    new Dictionary<string, object?>
+                    {
+                        ["@Id"] = inscricao.Id,
+                        ["@Nome"] = inscricao.Nome,
+                        ["@Email"] = inscricao.Email,
+                        ["@Idade"] = inscricao.Idade,
+                        ["@Cpf"] = inscricao.Cpf,
+                        ["@Carreira"] = inscricao.Carreira,
+                        ["@Protocolo"] = inscricao.Protocolo,
+                        ["@CriadoEm"] = inscricao.CriadoEm.ToString("o"),
+                        ["@EditalId"] = inscricao.EditalId,
+                    }, tx);
+            }
+
+            foreach (var resultado in _estado.Resultados)
+            {
+                ExecuteNonQuery(@"INSERT INTO Resultados (InscricaoId, Nome, Email, Idade, Cpf, CarreiraId, CarreiraNome,
+                                                         Percentual, Acertos, Total, AprovadoPreliminar, TempoGastoSegundos,
+                                                         EnviadoEm, EditalId, NomeNormalizado)
+                                   VALUES (@InscricaoId, @Nome, @Email, @Idade, @Cpf, @CarreiraId, @CarreiraNome,
+                                           @Percentual, @Acertos, @Total, @AprovadoPreliminar, @TempoGastoSegundos,
+                                           @EnviadoEm, @EditalId, @NomeNormalizado)",
+                    new Dictionary<string, object?>
+                    {
+                        ["@InscricaoId"] = resultado.InscricaoId,
+                        ["@Nome"] = resultado.Nome,
+                        ["@Email"] = resultado.Email,
+                        ["@Idade"] = resultado.Idade,
+                        ["@Cpf"] = resultado.Cpf,
+                        ["@CarreiraId"] = resultado.CarreiraId,
+                        ["@CarreiraNome"] = resultado.CarreiraNome,
+                        ["@Percentual"] = resultado.Percentual,
+                        ["@Acertos"] = resultado.Acertos,
+                        ["@Total"] = resultado.Total,
+                        ["@AprovadoPreliminar"] = BoolToInt(resultado.AprovadoPreliminar),
+                        ["@TempoGastoSegundos"] = resultado.TempoGastoSegundos,
+                        ["@EnviadoEm"] = resultado.EnviadoEm.ToString("o"),
+                        ["@EditalId"] = resultado.EditalId,
+                        ["@NomeNormalizado"] = resultado.NomeNormalizado,
+                    }, tx);
+
+                if (resultado.Discursivas is not null)
+                {
+                    foreach (var discursiva in resultado.Discursivas)
+                    {
+                        ExecuteNonQuery(@"INSERT INTO Discursivas (InscricaoId, QuestaoId, Area, Resposta, Nota, NotaMaxima, Status, CorrigidaEm)
+                                           VALUES (@InscricaoId, @QuestaoId, @Area, @Resposta, @Nota, @NotaMaxima, @Status, @CorrigidaEm)",
+                            new Dictionary<string, object?>
+                            {
+                                ["@InscricaoId"] = resultado.InscricaoId,
+                                ["@QuestaoId"] = discursiva.QuestaoId,
+                                ["@Area"] = discursiva.Area,
+                                ["@Resposta"] = discursiva.Resposta,
+                                ["@Nota"] = discursiva.Nota,
+                                ["@NotaMaxima"] = discursiva.NotaMaxima,
+                                ["@Status"] = discursiva.Status,
+                                ["@CorrigidaEm"] = discursiva.CorrigidaEm?.ToString("o"),
+                            }, tx);
+                    }
+                }
+            }
+
+            tx.Commit();
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Falha ao persistir o estado em {Arquivo}.", _arquivo);
+            _log.LogError(ex, "Falha ao persistir o estado no banco {Database}.", _database);
         }
+    }
+
+    private static string NormalizePostgresConnectionString(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != "postgres" && uri.Scheme != "postgresql"))
+        {
+            return value;
+        }
+
+        var userInfo = uri.UserInfo.Split(':', 2);
+        var builder = new NpgsqlConnectionStringBuilder
+        {
+            Host = uri.Host,
+            Port = uri.Port > 0 ? uri.Port : 5432,
+            Database = uri.AbsolutePath.TrimStart('/'),
+            Username = Uri.UnescapeDataString(userInfo.ElementAtOrDefault(0) ?? ""),
+            Password = Uri.UnescapeDataString(userInfo.ElementAtOrDefault(1) ?? ""),
+            SslMode = SslMode.Require,
+            TrustServerCertificate = true,
+        };
+
+        return builder.ConnectionString;
+    }
+
+    private static int BoolToInt(bool value) => value ? 1 : 0;
+
+    private void ExecuteNonQuery(string sql, Dictionary<string, object?>? parameters, NpgsqlTransaction? tx)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = sql;
+        if (tx is not null) cmd.Transaction = tx;
+        if (parameters is not null)
+        {
+            foreach (var kv in parameters)
+            {
+                var param = cmd.CreateParameter();
+                param.ParameterName = kv.Key;
+                param.Value = kv.Value ?? DBNull.Value;
+                cmd.Parameters.Add(param);
+            }
+        }
+        cmd.ExecuteNonQuery();
     }
 }

@@ -57,8 +57,8 @@ Discord e nome)"*.
 
 ## 📦 Persistência
 
-Estado (edital, inscrições, resultados) é gravado em `api/App_Data/state.json` de forma atômica.
-Sobrevive a reinícios. Apague o arquivo para zerar tudo. (A pasta `App_Data/` é git-ignored.)
+Estado (edital, inscrições, resultados, sorteio e correções discursivas) é gravado em SQLite.
+Por padrão o arquivo fica em `api/App_Data/state.db`; em hospedagem, defina `DATA_DIR` para uma pasta/volume persistente (ex.: `/data`) ou use `Data:ConnectionString`. Para zerar tudo, pare a aplicação e apague o `state.db`.
 
 ## 🔌 Endpoints
 
