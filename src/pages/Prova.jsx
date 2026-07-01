@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useInscricao } from '../context/InscricaoContext.jsx'
 import { getProva, enviarProva } from '../api/provas.js'
+import { validarInscricao } from '../api/inscricoes.js'
 import { getStatusProva } from '../api/admin.js'
 import { getCarreira } from '../data/carreiras.js'
 import Questao from '../components/Questao.jsx'
@@ -14,12 +15,13 @@ import {
 
 export default function Prova() {
   const navigate = useNavigate()
-  const { inscricao, setResultado } = useInscricao()
+  const { inscricao, resultado, setResultado, encerrarSessao } = useInscricao()
 
   const [prova, setProva] = useState(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const [provaFechada, setProvaFechada] = useState(false)
+  const [inscricaoInvalida, setInscricaoInvalida] = useState(null)
   const [respostas, setRespostas] = useState({})
   const [enviando, setEnviando] = useState(false)
   const [confirmar, setConfirmar] = useState(false)
@@ -30,20 +32,30 @@ export default function Prova() {
   const fimRef = useRef(null) // horário-limite absoluto (epoch ms)
 
   // Carrega a prova da carreira escolhida (e verifica se a prova está aberta).
+  // Também valida no servidor a inscrição salva no navegador ANTES de começar —
+  // assim ninguém faz a prova inteira para descobrir no envio que ela não existe mais.
   useEffect(() => {
     let ativo = true
     setCarregando(true)
-    Promise.all([getProva(inscricao.carreira), getStatusProva()])
-      .then(([p, status]) => {
+    Promise.all([getProva(inscricao.carreira), getStatusProva(), validarInscricao(inscricao.id)])
+      .then(([p, status, valida]) => {
         if (!ativo) return
-        if (status?.fechada) {
+        // Restaura a sessão se já existir (reload/reabertura) ou cria uma nova.
+        // Assim cronômetro e respostas NÃO resetam ao recarregar a página.
+        const existente = carregarSessaoProva(inscricao.id)
+
+        // Uma sessão EM ANDAMENTO tem prioridade sobre os bloqueios abaixo: mesmo
+        // que a inscrição tenha sumido do servidor (o envio a recria) ou o certame
+        // tenha fechado (só impede INICIAR), o candidato pode concluir e enviar.
+        if (!valida.ok && !existente) {
+          setInscricaoInvalida(valida.mensagem || 'Inscrição não encontrada. Refaça a inscrição.')
+          return
+        }
+        if (status?.fechada && !existente) {
           setProvaFechada(true)
           return
         }
 
-        // Restaura a sessão se já existir (reload/reabertura) ou cria uma nova.
-        // Assim cronômetro e respostas NÃO resetam ao recarregar a página.
-        const existente = carregarSessaoProva(inscricao.id)
         const sessao = existente ?? { inicio: Date.now(), respostas: {} }
         if (!existente) salvarSessaoProva(inscricao.id, sessao)
 
@@ -58,7 +70,14 @@ export default function Prova() {
     return () => {
       ativo = false
     }
-  }, [inscricao.carreira])
+  }, [inscricao.carreira, inscricao.id])
+
+  // Sessão inválida (inscrição sumiu do servidor): limpa tudo e volta à inscrição.
+  function refazerInscricao() {
+    limparSessaoProva(inscricao.id)
+    encerrarSessao()
+    navigate('/inscricao', { replace: true })
+  }
 
   function responder(questaoId, valor) {
     setRespostas((r) => {
@@ -126,6 +145,9 @@ export default function Prova() {
     [prova, respostas],
   )
 
+  // Quem já enviou a prova não pode refazê-la — vai direto ao resultado.
+  if (resultado) return <Navigate to="/resultado" replace />
+
   if (carregando) {
     return (
       <div className="pagina estado-carregando">
@@ -141,6 +163,22 @@ export default function Prova() {
         <div className="alerta alerta--erro">{erro}</div>
         <button className="btn btn--ghost" onClick={() => window.location.reload()}>
           Tentar novamente
+        </button>
+      </div>
+    )
+  }
+
+  if (inscricaoInvalida) {
+    return (
+      <div className="pagina estado-carregando">
+        <div className="bloqueio-icone" aria-hidden>⚠️</div>
+        <h1>Inscrição não localizada</h1>
+        <p>
+          {inscricaoInvalida} A sessão salva neste navegador não é mais válida no servidor —
+          é preciso refazer a inscrição antes de iniciar a prova.
+        </p>
+        <button className="btn btn--primario" onClick={refazerInscricao}>
+          Refazer inscrição
         </button>
       </div>
     )

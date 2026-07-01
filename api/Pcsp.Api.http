@@ -20,7 +20,11 @@ Content-Type: application/json
   "carreira": "agente"
 }
 
+### Consultar inscrição (valida a sessão salva antes da prova; 404/409 = refazer)
+GET {{base}}/inscricoes/{{inscricao.response.body.id}}
+
 ### Enviar respostas (usa o id da inscrição acima)
+# O bloco "candidato" permite recriar a inscrição se ela tiver sumido do servidor.
 POST {{base}}/provas/agente/respostas
 Content-Type: application/json
 
@@ -29,7 +33,13 @@ Content-Type: application/json
   "carreiraId": "agente",
   "respostas": { "pt-01": "b", "mat-01": "b", "disc-comum-01": "Texto da redação..." },
   "tempoGastoSegundos": 1830,
-  "finalizadaPor": "manual"
+  "finalizadaPor": "manual",
+  "candidato": {
+    "nome": "João da Silva",
+    "email": "joao@exemplo.com",
+    "idade": 25,
+    "cpf": "123456789012345678"
+  }
 }
 
 ### Ranking (protegido)

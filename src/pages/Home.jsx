@@ -5,7 +5,7 @@ import { getConfigProva } from '../api/admin.js'
 import { useInscricao } from '../context/InscricaoContext.jsx'
 
 export default function Home() {
-  const { inscricao } = useInscricao()
+  const { inscricao, resultado } = useInscricao()
   const [config, setConfig] = useState(null)
 
   // Sobrepõe vagas/duração com os valores configurados no painel (fallback: estáticos).
@@ -56,7 +56,11 @@ export default function Home() {
             Preencha sua inscrição, escolha o cargo desejado e realize a prova objetiva e discursiva.
           </p>
           <div className="hero__acoes">
-            {inscricao ? (
+            {inscricao && resultado ? (
+              <Link to="/resultado" className="btn btn--primario btn--lg">
+                Ver resultado
+              </Link>
+            ) : inscricao ? (
               <>
                 <Link to="/prova" className="btn btn--primario btn--lg">
                   Iniciar / continuar prova

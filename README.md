@@ -88,6 +88,10 @@ A API deve expor os endpoints abaixo (prefixo `VITE_API_URL`, ex.: `/api`). Lemb
   "carreira": "agente", "protocolo": "PCSP-2026-123456", "criadoEm": "2026-06-29T12:00:00Z" }
 ```
 
+`GET /inscricoes/{id}` — consulta a inscrição. O front chama antes de iniciar a prova para
+validar a sessão salva no navegador (404 = não existe; 409 = de um edital anterior). Assim o
+candidato refaz a inscrição **antes** de responder, e não descobre o problema só no envio.
+
 ### 2. Buscar prova do cargo
 `GET /provas/{carreiraId}`  — `carreiraId` ∈ `agente | investigador | perito | delegado`
 
@@ -117,7 +121,16 @@ A API deve expor os endpoints abaixo (prefixo `VITE_API_URL`, ex.: `/api`). Lemb
 // request
 { "inscricaoId": "guid", "carreiraId": "agente",
   "respostas": { "pt-01": "c", "mat-01": "b", "disc-comum-01": "Texto da redação..." },
-  "tempoGastoSegundos": 1830, "finalizadaPor": "manual" }
+  "tempoGastoSegundos": 1830, "finalizadaPor": "manual",
+  "candidato": { "nome": "João da Silva", "email": "joao@exemplo.com", "idade": 25,
+    "cpf": "123456789012345678" } }
+```
+
+> 🛟 Se a inscrição tiver sumido do servidor (reset de banco etc.), o backend **recria a
+> inscrição** a partir do bloco `candidato` — com as mesmas validações e a regra de tentativa
+> única — em vez de rejeitar o envio. A prova do candidato nunca é perdida.
+
+```jsonc
 
 // response 200 (correção feita no servidor)
 {

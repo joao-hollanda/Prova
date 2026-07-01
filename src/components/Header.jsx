@@ -1,11 +1,22 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useInscricao } from '../context/InscricaoContext.jsx'
 
 export default function Header() {
   const { inscricao, encerrarSessao } = useInscricao()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
 
   function sair() {
+    // Durante a prova, um clique acidental em "Sair" descartaria a inscrição
+    // (e, com ela, as respostas já marcadas). Pede confirmação explícita.
+    if (
+      pathname === '/prova' &&
+      !window.confirm(
+        'Você está com uma prova em andamento. Sair encerra a sessão e descarta a inscrição atual. Deseja mesmo sair?',
+      )
+    ) {
+      return
+    }
     encerrarSessao()
     navigate('/')
   }

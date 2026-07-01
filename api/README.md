@@ -32,7 +32,7 @@ VITE_ADMIN_SENHA=pcsp2026   # precisa ser IGUAL ao Admin:Token do backend
 | **Gabarito nunca exposto** — removido da prova e da correção | `Models.cs` (`ToPublica`), `Catalogo.cs` |
 | **Correção no servidor** (cliente só manda respostas) | `Catalogo.cs` → `Correcao` |
 | **Painel protegido por token** (`X-Admin-Token`, comparação em tempo constante) | `Endpoints.cs` → `GuardaAdmin` |
-| **Identidade vinda da inscrição** no envio (ignora o `candidato` do cliente) | `AppStore.RegistrarResultado` |
+| **Identidade vinda da inscrição** no envio (o `candidato` do cliente só é usado na recuperação abaixo) | `AppStore.RegistrarResultado` |
 | **Erros genéricos** (sem stack trace) + headers de segurança | `Program.cs` |
 
 > ⚠️ Como é uma SPA, o token do admin acaba embutido no bundle do front. Para segurança
@@ -45,7 +45,8 @@ Pedido: *"uma pessoa não pode realizar mais de uma tentativa por edital (valida
 Discord e nome)"*.
 
 - Um **resultado enviado** = uma tentativa. A checagem é feita de forma **atômica** (sob lock)
-  na inscrição **e** no envio da prova.
+  na inscrição **e** no envio da prova. Reenvios da **mesma inscrição** não contam como nova
+  tentativa: devolvem o resultado já registrado (idempotência).
 - Bloqueia se, no edital atual, já existir tentativa com o **mesmo ID do Discord** *OU* o
   **mesmo nome** (normalizado: sem acentos, minúsculo, espaços colapsados). Assim não dá para
   burlar trocando só o nome nem usando uma conta alternativa com o mesmo nome.
@@ -54,6 +55,26 @@ Discord e nome)"*.
 - **Trocar de edital reseta a regra**: `POST /api/admin/edital/novo` inicia um novo ciclo
   (ou altere `Edital:Id` em `appsettings.json`). Resultados antigos ficam no histórico, fora
   do ranking atual.
+
+## 🛟 Prevenção contra "Inscrição não encontrada" no envio
+
+A inscrição fica salva no navegador do candidato; se ela sumir do servidor (reset/troca de
+banco, novo edital) a pessoa poderia fazer a prova inteira e perder tudo no envio. Duas camadas
+evitam isso:
+
+1. **Validação antes de começar** — ao abrir a prova, o front chama `GET /api/inscricoes/{id}`;
+   se a inscrição não existir (404) ou for de outro edital (409), o candidato é orientado a
+   refazer a inscrição **antes** de responder qualquer questão.
+2. **Recuperação no envio** — se mesmo assim a inscrição sumir durante a prova, o
+   `POST /api/provas/{carreiraId}/respostas` recria a inscrição a partir do bloco `candidato`
+   do payload, passando pelas mesmas validações e regras (edital aberto, tentativa única).
+   A prova nunca é descartada por uma inscrição perdida.
+3. **Reenvio idempotente** — se a MESMA inscrição reenviar (clique duplo, resposta perdida na
+   rede, retry após erro), o servidor devolve o resultado já registrado em vez de bloquear
+   com 409. O candidato nunca fica sem ver um resultado que o servidor já aceitou.
+4. **Fechar o certame não descarta prova em andamento** — o fechamento impede *inscrever/
+   iniciar*; quem já estava com a prova aberta consegue enviá-la normalmente (no front, uma
+   sessão de prova já iniciada também continua acessível após o fechamento).
 
 ## 📦 Persistência
 
@@ -65,6 +86,7 @@ Em hospedagem, configure `DATABASE_URL`, `POSTGRES_CONNECTION_STRING` ou `Data:C
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
 | `POST` | `/api/inscricoes` | — | Cria inscrição (valida + tentativa única) |
+| `GET`  | `/api/inscricoes/{id}` | — | Consulta inscrição (o front valida a sessão salva antes da prova) |
 | `GET`  | `/api/provas/{carreiraId}` | — | Prova ATIVA do cargo (sorteada, sem gabarito) |
 | `POST` | `/api/provas/{carreiraId}/respostas` | — | Envia respostas → correção |
 | `GET`  | `/api/config` | — | Configuração efetiva (vagas/duração/nota) — público |

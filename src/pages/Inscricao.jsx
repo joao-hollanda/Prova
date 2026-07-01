@@ -11,7 +11,7 @@ const CONSENTIMENTO_ERRO = 'É necessário concordar para prosseguir.'
 
 export default function Inscricao() {
   const navigate = useNavigate()
-  const { inscricao, setInscricao } = useInscricao()
+  const { inscricao, setInscricao, setResultado } = useInscricao()
   const [form, setForm] = useState(inscricao ? { ...VAZIO, ...inscricao } : VAZIO)
   const [erros, setErros] = useState({})
   const [enviando, setEnviando] = useState(false)
@@ -62,6 +62,7 @@ export default function Inscricao() {
         carreira: form.carreira,
       }
       const criada = await criarInscricao(dados)
+      setResultado(null) // descarta resultado de uma sessão anterior neste navegador
       setInscricao(criada)
       navigate('/prova')
     } catch (err) {

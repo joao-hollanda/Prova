@@ -38,6 +38,19 @@ public static class Endpoints
             };
         })
         .RequireRateLimiting("escrita");
+
+        // Consulta uma inscrição pelo id — o front usa para validar a sessão salva
+        // ANTES de iniciar a prova, evitando que o candidato descubra só no envio
+        // que a inscrição não existe mais (ex.: banco resetado/trocado).
+        api.MapGet("/inscricoes/{id}", (string id, AppStore store) =>
+        {
+            var inscricao = store.GetInscricao(id);
+            if (inscricao is null)
+                return Erro(404, "Inscrição não encontrada. Refaça a inscrição.");
+            if (inscricao.EditalId != store.EditalId)
+                return Erro(409, "Esta inscrição pertence a um edital anterior. Faça uma nova inscrição.");
+            return Results.Ok(inscricao.ToResponse());
+        });
     }
 
     // -------------------------------------------------------------- /api/provas
@@ -62,7 +75,15 @@ public static class Endpoints
 
             var inscricao = store.GetInscricao(req.InscricaoId);
             if (inscricao is null)
-                return Erro(404, "Inscrição não encontrada. Refaça a inscrição.");
+            {
+                // A inscrição pode ter se perdido no servidor (reset/troca de banco) com a
+                // sessão ainda ativa no navegador. Para o candidato não perder a prova já
+                // feita, recria a inscrição com os dados do payload — sujeitos às MESMAS
+                // validações e regras (edital aberto, tentativa única) da inscrição normal.
+                var recuperada = RecuperarInscricao(req, carreiraId, store, out var falha);
+                if (falha is not null) return falha;
+                inscricao = recuperada!;
+            }
 
             // A prova corrigida é SEMPRE a da inscrição (não confiamos no carreiraId do cliente).
             if (!string.Equals(inscricao.Carreira, carreiraId, StringComparison.OrdinalIgnoreCase))
@@ -74,8 +95,6 @@ public static class Endpoints
             var (erro, resultado) = store.RegistrarResultado(inscricao, respostas, tempo);
             return erro switch
             {
-                AppStore.EnvioErro.EditalFechado =>
-                    Erro(403, "A prova foi encerrada pela administração do certame."),
                 AppStore.EnvioErro.EditalDiferente =>
                     Erro(409, "Esta inscrição pertence a um edital anterior. Faça uma nova inscrição."),
                 AppStore.EnvioErro.JaConcluiu =>
@@ -148,6 +167,36 @@ public static class Endpoints
                 ? Results.Ok(new { mensagem = "Correção registrada." })
                 : Erro(404, "Resposta discursiva não encontrada.");
         });
+    }
+
+    /// <summary>
+    /// Recria a inscrição a partir do bloco "candidato" do envio, quando o id salvo no
+    /// navegador não existe mais no servidor. Não abre brecha: os dados passam pela mesma
+    /// validação da inscrição normal e pelas mesmas regras de bloqueio (edital fechado /
+    /// tentativa única) — equivale a inscrever-se e enviar em seguida.
+    /// </summary>
+    private static InscricaoRecord? RecuperarInscricao(
+        RespostasRequest req, string carreiraId, AppStore store, out IResult? falha)
+    {
+        var dados = new InscricaoRequest(
+            req.Candidato?.Nome, req.Candidato?.Email, req.Candidato?.Idade, req.Candidato?.Cpf, carreiraId);
+
+        if (Validacoes.ValidarInscricao(dados).Count > 0)
+        {
+            falha = Erro(404, "Inscrição não encontrada. Refaça a inscrição.");
+            return null;
+        }
+
+        var (bloqueio, inscricao) = store.CriarInscricao(dados);
+        falha = bloqueio switch
+        {
+            AppStore.Bloqueio.EditalFechado =>
+                Erro(403, "A prova foi encerrada pela administração do certame."),
+            AppStore.Bloqueio.JaConcluiu =>
+                Erro(409, "Você já enviou a prova neste edital. Não é permitido reenviar."),
+            _ => null,
+        };
+        return inscricao;
     }
 
     // ----------------------------------------------------------------- segurança

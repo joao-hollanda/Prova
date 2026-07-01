@@ -123,12 +123,15 @@ public sealed class AppStore
 
     // ---------------------------------------------------------------- correção
 
-    public enum EnvioErro { Nenhum, EditalFechado, EditalDiferente, JaConcluiu }
+    public enum EnvioErro { Nenhum, EditalDiferente, JaConcluiu }
 
     /// <summary>
     /// Corrige e registra o resultado de forma atômica. Recusa um segundo envio do
     /// mesmo candidato (ID do Discord OU nome) dentro do edital. A identidade vem
     /// SEMPRE da inscrição armazenada — o bloco "candidato" do cliente é ignorado.
+    /// Reenvio da MESMA inscrição é idempotente (devolve o resultado já registrado).
+    /// Fechar o certame NÃO bloqueia este método: o fechamento impede inscrever/iniciar,
+    /// não descarta a prova de quem já estava com ela em andamento.
     /// </summary>
     public (EnvioErro erro, CorrecaoResponse? resultado) RegistrarResultado(
         InscricaoRecord inscricao,
@@ -137,8 +140,13 @@ public sealed class AppStore
     {
         lock (_lock)
         {
-            if (_estado.Edital.Fechada)
-                return (EnvioErro.EditalFechado, null);
+            // Reenvio da mesma inscrição (clique duplo, resposta perdida na rede, retry
+            // após erro): devolve o que já foi registrado em vez de bloquear — o candidato
+            // nunca fica sem ver um resultado que o servidor já aceitou.
+            var existente = _estado.Resultados.FirstOrDefault(r =>
+                r.InscricaoId == inscricao.Id && r.EditalId == inscricao.EditalId);
+            if (existente is not null)
+                return (EnvioErro.Nenhum, ReconstruirCorrecao(existente));
 
             if (inscricao.EditalId != _estado.Edital.Id)
                 return (EnvioErro.EditalDiferente, null);
@@ -409,6 +417,15 @@ public sealed class AppStore
             return true;
         }
     }
+
+    /// <summary>Reconstrói a resposta de correção a partir de um resultado já registrado.</summary>
+    private CorrecaoResponse ReconstruirCorrecao(ResultadoRecord r) => new(
+        r.CarreiraId,
+        r.EnviadoEm,
+        new ObjetivasDto(
+            r.Total, r.Acertos, r.Total - r.Acertos, r.Percentual,
+            _estado.Config.NotaDeCorte, r.AprovadoPreliminar),
+        r.Discursivas.Select(d => new DiscursivaDto(d.QuestaoId, d.Area, d.Resposta, d.Status)).ToList());
 
     // ------------------------------------------------------------------ helpers
 
