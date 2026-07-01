@@ -86,7 +86,7 @@ export async function gerarComprovantePDF(inscricao, resultado) {
     ['Nome', inscricao.nome],
     ['E-mail', inscricao.email],
     ['Idade', `${inscricao.idade} anos`],
-    ['CPF (ID do Discord)', inscricao.cpf],
+    ['ID do Discord', inscricao.cpf],
     ['Cargo pretendido', nomeCargo],
     ['Protocolo', inscricao.protocolo || '—'],
     ['Data da inscrição', formatarData(inscricao.criadoEm)],

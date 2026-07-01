@@ -38,6 +38,13 @@ export default function Home() {
 
   return (
     <div className="home">
+      <p className="aviso-rp">
+        🎭 <strong>Simulação de roleplay (RP)</strong> — este site é fictício e faz parte do
+        servidor <strong>Ilha em São Paulo</strong>. Não tem <strong>qualquer vínculo</strong> com
+        a Polícia Civil do Estado de São Paulo ou órgãos públicos reais, e nada aqui possui validade
+        oficial.
+      </p>
+
       <section className="hero">
         <div className="hero__conteudo">
           <span className="hero__selo">Concurso Público · Ilha em São Paulo</span>

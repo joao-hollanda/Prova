@@ -7,6 +7,7 @@ import { getStatusProva } from '../api/admin.js'
 import { useInscricao } from '../context/InscricaoContext.jsx'
 
 const VAZIO = { nome: '', email: '', idade: '', cpf: '', carreira: '' }
+const CONSENTIMENTO_ERRO = 'É necessário concordar para prosseguir.'
 
 export default function Inscricao() {
   const navigate = useNavigate()
@@ -16,6 +17,7 @@ export default function Inscricao() {
   const [enviando, setEnviando] = useState(false)
   const [erroApi, setErroApi] = useState(null)
   const [provaFechada, setProvaFechada] = useState(false)
+  const [consentimento, setConsentimento] = useState(false)
 
   // Verifica se o certame está aberto.
   useEffect(() => {
@@ -41,6 +43,7 @@ export default function Inscricao() {
       return
     }
     const novosErros = validarInscricao(form)
+    if (!consentimento) novosErros.consentimento = CONSENTIMENTO_ERRO
     setErros(novosErros)
     if (Object.keys(novosErros).length > 0) {
       // foca o primeiro campo com erro
@@ -127,9 +130,9 @@ export default function Inscricao() {
           </div>
 
           <div className={`campo ${erros.cpf ? 'campo--erro' : ''}`}>
-            <label htmlFor="cpf">CPF (ID do Discord)</label>
+            <label htmlFor="idDiscord">ID do Discord</label>
             <input
-              id="cpf"
+              id="idDiscord"
               type="text"
               inputMode="numeric"
               value={form.cpf}
@@ -162,6 +165,29 @@ export default function Inscricao() {
           </div>
           {erros.carreira && <span className="campo__erro">{erros.carreira}</span>}
         </fieldset>
+
+        <div className={`campo campo--consentimento ${erros.consentimento ? 'campo--erro' : ''}`}>
+          <label className="consentimento">
+            <input
+              type="checkbox"
+              checked={consentimento}
+              onChange={(e) => {
+                setConsentimento(e.target.checked)
+                if (e.target.checked && erros.consentimento) {
+                  setErros((prev) => ({ ...prev, consentimento: null }))
+                }
+              }}
+            />
+            <span>
+              Entendo que este é um <strong>concurso fictício de roleplay (RP)</strong> do servidor
+              Ilha em São Paulo, <strong>sem qualquer vínculo</strong> com a Polícia Civil de São
+              Paulo ou órgãos públicos reais. Concordo que meus dados (nome, e-mail e ID do Discord)
+              sejam usados <strong>apenas</strong> para fins do RP e possam ser removidos a meu pedido.
+              <strong> Não informo dados sensíveis reais (como CPF).</strong>
+            </span>
+          </label>
+          {erros.consentimento && <span className="campo__erro">{erros.consentimento}</span>}
+        </div>
 
         <button
           type="submit"

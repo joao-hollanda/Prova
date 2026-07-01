@@ -1,5 +1,5 @@
 // Validações do formulário de inscrição.
-// Observação de RP: o campo "CPF" corresponde ao ID do Discord do jogador.
+// Observação de RP: o único identificador do jogador é o ID do Discord.
 
 export function validarNome(nome) {
   const v = (nome || '').trim()
@@ -27,12 +27,12 @@ export function validarIdade(idade) {
 }
 
 /**
- * "CPF" no contexto do RP = ID do Discord (snowflake).
+ * Identificador do jogador = ID do Discord (snowflake).
  * IDs do Discord são numéricos, normalmente com 17 a 20 dígitos.
  */
-export function validarCpf(cpf) {
-  const v = (cpf || '').trim()
-  if (!v) return 'Informe seu CPF (ID do Discord).'
+export function validarIdDiscord(idDiscord) {
+  const v = (idDiscord || '').trim()
+  if (!v) return 'Informe seu ID do Discord.'
   if (!/^\d+$/.test(v)) return 'O ID do Discord deve conter apenas números.'
   if (v.length < 17 || v.length > 20) return 'ID do Discord inválido (deve ter entre 17 e 20 dígitos).'
   return null
@@ -50,7 +50,8 @@ export function validarInscricao(dados) {
     nome: validarNome(dados.nome),
     email: validarEmail(dados.email),
     idade: validarIdade(dados.idade),
-    cpf: validarCpf(dados.cpf),
+    // chave interna mantida como `cpf` (contrato da API), mas representa o ID do Discord.
+    cpf: validarIdDiscord(dados.cpf),
     carreira: validarCarreira(dados.carreira),
   }
   for (const [campo, erro] of Object.entries(checks)) {

@@ -12,7 +12,8 @@ para **consumir uma API em C# (ASP.NET Core)** — basta trocar uma variável de
 ## ✨ Funcionalidades
 
 - **Página inicial** com os 4 cargos (Agente, Investigador, Perito, Delegado), vagas e áreas.
-- **Inscrição** com validação de Nome, E-mail (real), Idade e CPF (= ID do Discord no RP) + escolha do cargo.
+- **Inscrição** com validação de Nome, E-mail (real), Idade e ID do Discord + escolha do cargo,
+  com **checkbox de consentimento** deixando claro que é um RP sem vínculo real.
 - **Prova** específica por cargo + conteúdo comum, com:
   - questões **fechadas** (múltipla escolha) e **abertas** (discursivas);
   - **cronômetro regressivo** com envio automático ao esgotar o tempo;

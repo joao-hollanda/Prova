@@ -85,6 +85,21 @@ h1, h2, h3 { color: var(--azul-800); line-height: 1.2; margin: 0 0 .5rem; }
 .footer__modo { padding: .2rem .6rem; border-radius: 999px; font-weight: 600; }
 .footer__modo.is-mock { background: #3a2e0c; color: var(--dourado-claro); }
 .footer__modo.is-api { background: #0c2e1c; color: #74e0a3; }
+.footer__aviso {
+  max-width: var(--max); margin: 0 auto; padding: .85rem 1.25rem;
+  border-bottom: 1px solid rgba(233, 207, 115, .18);
+  font-size: .78rem; line-height: 1.5; color: #aeb9d6; text-align: center;
+}
+.footer__aviso strong { color: var(--dourado-claro); }
+
+/* Aviso de RP (topo da home) */
+.aviso-rp {
+  max-width: var(--max); margin: 0 auto 1.25rem; padding: .8rem 1.1rem;
+  background: #fff8e6; border: 1px solid var(--dourado);
+  border-radius: var(--raio-sm); color: #6b5410;
+  font-size: .85rem; line-height: 1.55; text-align: center;
+}
+.aviso-rp strong { color: #4d3c08; }
 
 /* ---------- Botões ---------- */
 .btn {
@@ -199,6 +214,17 @@ h1, h2, h3 { color: var(--azul-800); line-height: 1.2; margin: 0 0 .5rem; }
 .campo-linha { display: grid; grid-template-columns: 1fr 1.3fr; gap: 1rem; }
 .campo--erro input, .campo--erro select { border-color: var(--vermelho); }
 .campo__erro { color: var(--vermelho); font-size: .8rem; }
+.consentimento {
+  display: flex; align-items: flex-start; gap: .6rem;
+  font-size: .82rem; line-height: 1.5; color: var(--texto-suave);
+  font-weight: 400; cursor: pointer;
+}
+.consentimento input { width: 1.1rem; height: 1.1rem; margin-top: .15rem; flex-shrink: 0; }
+.consentimento strong { color: var(--azul-800); }
+.campo--consentimento.campo--erro .consentimento {
+  color: var(--texto); background: var(--vermelho-bg);
+  border: 1px solid #f1c2c2; border-radius: var(--raio-sm); padding: .7rem .8rem;
+}
 
 .opcoes-carreira { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; margin-top: .25rem; }
 .opcao-carreira {
