@@ -4,10 +4,10 @@ import { CARREIRAS } from '../data/carreiras.js'
 import { montarBanco } from '../data/questoes.js'
 
 // Chaves usadas no modo mock (localStorage).
-export const KEY_RESULTADOS = 'pcsp_resultados'
-export const KEY_STATUS = 'pcsp_prova_status'
-export const KEY_CONFIG = 'pcsp_config'
-const KEY_TOKEN = 'pcsp_admin_token'
+export const KEY_RESULTADOS = 'pf_resultados'
+export const KEY_STATUS = 'pf_prova_status'
+export const KEY_CONFIG = 'pf_config'
+const KEY_TOKEN = 'pf_admin_token'
 
 // ----------------------------------------------------------------------------
 // Sessão do painel — a senha NUNCA fica no front. O login é feito no backend,
@@ -176,6 +176,60 @@ export async function setStatusProva(fechada) {
     method: 'POST',
     body: { fechada: !!fechada },
   })
+}
+
+// ----------------------------------------------------------------------------
+// Gestão de candidatos (ferramentas de contingência)
+// ----------------------------------------------------------------------------
+
+/** Lista as inscrições do edital atual com a situação de cada candidato (protegido). */
+export async function listarInscricoes() {
+  if (USE_MOCK) {
+    await delay(100)
+    return [] // no modo mock as inscrições vivem só no navegador de cada candidato
+  }
+  return adminFetch('/admin/inscricoes')
+}
+
+/** Exclui inscrição + resultado + sessão (libera a tentativa única) (protegido). */
+export async function excluirInscricao(inscricaoId) {
+  if (USE_MOCK) {
+    await delay(80)
+    return { mensagem: 'Exclusão indisponível no modo mock.' }
+  }
+  return adminFetch('/admin/inscricoes/excluir', { method: 'POST', body: { inscricaoId } })
+}
+
+/** Exclui só o resultado, mantendo a inscrição — o candidato refaz a prova (protegido). */
+export async function excluirResultado(inscricaoId) {
+  if (USE_MOCK) {
+    await delay(80)
+    const lista = lerResultadosLocal().filter((r) => r.inscricaoId !== inscricaoId)
+    localStorage.setItem(KEY_RESULTADOS, JSON.stringify(lista))
+    return { mensagem: 'Resultado excluído.' }
+  }
+  return adminFetch('/admin/resultados/excluir', { method: 'POST', body: { inscricaoId } })
+}
+
+/** Concede tempo extra em minutos (negativo reduz) a um candidato (protegido). */
+export async function adicionarTempoExtra(inscricaoId, adicionarMinutos) {
+  if (USE_MOCK) {
+    await delay(80)
+    return { mensagem: 'Tempo extra indisponível no modo mock.', extraMinutos: 0 }
+  }
+  return adminFetch('/admin/inscricoes/tempo', {
+    method: 'POST',
+    body: { inscricaoId, adicionarMinutos },
+  })
+}
+
+/** Pausa/retoma a prova de um candidato (protegido). */
+export async function pausarSessao(inscricaoId, pausar) {
+  if (USE_MOCK) {
+    await delay(80)
+    return { mensagem: 'Pausa indisponível no modo mock.' }
+  }
+  return adminFetch('/admin/sessao/pausar', { method: 'POST', body: { inscricaoId, pausar } })
 }
 
 // ----------------------------------------------------------------------------

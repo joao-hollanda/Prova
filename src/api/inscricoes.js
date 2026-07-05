@@ -47,5 +47,5 @@ export async function validarInscricao(id) {
 function gerarProtocolo() {
   const ano = new Date().getFullYear()
   const seq = Math.floor(100000 + Math.random() * 900000)
-  return `PCSP-${ano}-${seq}`
+  return `PF-${ano}-${seq}`
 }

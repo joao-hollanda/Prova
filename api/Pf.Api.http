@@ -1,5 +1,5 @@
 @base = http://localhost:5000/api
-@adminToken = PCESP@ILHASP
+@adminToken = PF@ILHASP
 
 ### Status da prova (público)
 GET {{base}}/admin/prova/status
@@ -65,7 +65,7 @@ POST {{base}}/admin/edital/novo
 Content-Type: application/json
 X-Admin-Token: {{adminToken}}
 
-{ "id": "PCSP-2026-2" }
+{ "id": "PF-2026-2" }
 
 ### Configuração da prova (público)
 GET {{base}}/config

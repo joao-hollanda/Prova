@@ -181,8 +181,8 @@ export default function Inscricao() {
             />
             <span>
               Entendo que este é um <strong>concurso fictício de roleplay (RP)</strong> do servidor
-              Ilha em São Paulo, <strong>sem qualquer vínculo</strong> com a Polícia Civil de São
-              Paulo ou órgãos públicos reais. Concordo que meus dados (nome, e-mail e ID do Discord)
+              Ilha em São Paulo, <strong>sem qualquer vínculo</strong> com a Polícia Federal
+              ou órgãos públicos reais. Concordo que meus dados (nome, e-mail e ID do Discord)
               sejam usados <strong>apenas</strong> para fins do RP e possam ser removidos a meu pedido.
               <strong> Não informo dados sensíveis reais (como CPF).</strong>
             </span>

@@ -6,12 +6,12 @@ export default function Footer() {
       <p className="footer__aviso">
         ⚠️ Conteúdo fictício para fins de <strong>roleplay (RP)</strong> do servidor
         <strong> Ilha em São Paulo</strong>. Esta é uma simulação e <strong>não possui qualquer
-        vínculo</strong> com a Polícia Civil do Estado de São Paulo, a ACADEPOL ou qualquer órgão
+        vínculo</strong> com a Polícia Federal, a ANP (Academia Nacional de Polícia) ou qualquer órgão
         público real. Nomes, cargos, provas e resultados não têm validade oficial.
       </p>
       <div className="footer__inner">
         <span>
-          © {new Date().getFullYear()} Polícia Civil do Estado de São Paulo — Ilha em São Paulo (RP).
+          © {new Date().getFullYear()} Polícia Federal — Ilha em São Paulo (RP).
         </span>
         <span className={`footer__modo ${USE_MOCK ? 'is-mock' : 'is-api'}`}>
           {USE_MOCK ? 'Dados mockados (offline)' : 'Conectado à API'}

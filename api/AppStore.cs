@@ -1,6 +1,7 @@
+using System.Text.Json;
 using Npgsql;
 
-namespace Pcsp.Api;
+namespace Pf.Api;
 
 /// <summary>
 /// Repositório com persistência em PostgreSQL.
@@ -192,8 +193,174 @@ public sealed class AppStore
                 NomeNormalizado = nomeNorm,
                 Discursivas = discursivas,
             });
+            // Prova enviada: a sessão de backup não é mais necessária.
+            _estado.Sessoes.RemoveAll(s => s.InscricaoId == inscricao.Id);
             Salvar();
             return (EnvioErro.Nenhum, correcao);
+        }
+    }
+
+    // ------------------------------------------------ sessão de prova (backup)
+
+    public enum SessaoErro { Nenhum, InscricaoNaoEncontrada, JaEnviada }
+
+    /// <summary>
+    /// Salva/atualiza o progresso da prova no servidor (respostas + início).
+    /// O Início é definido na criação e NÃO pode ser empurrado para frente pelo
+    /// cliente (impede "ganhar tempo" limpando o navegador).
+    /// </summary>
+    public (SessaoErro erro, SessaoDto? sessao) SalvarSessao(
+        string inscricaoId, long? inicio, IReadOnlyDictionary<string, string?> respostas)
+    {
+        lock (_lock)
+        {
+            var inscricao = _estado.Inscricoes.FirstOrDefault(i =>
+                string.Equals(i.Id, inscricaoId, StringComparison.Ordinal));
+            if (inscricao is null) return (SessaoErro.InscricaoNaoEncontrada, null);
+
+            if (_estado.Resultados.Any(r => r.InscricaoId == inscricao.Id && r.EditalId == inscricao.EditalId))
+                return (SessaoErro.JaEnviada, null);
+
+            var agora = DateTimeOffset.UtcNow;
+            var sessao = _estado.Sessoes.FirstOrDefault(s => s.InscricaoId == inscricao.Id);
+            if (sessao is null)
+            {
+                var agoraMs = agora.ToUnixTimeMilliseconds();
+                sessao = new SessaoRecord
+                {
+                    InscricaoId = inscricao.Id,
+                    // Aceita um início vindo do cliente apenas se for no passado.
+                    Inicio = inicio is > 0 && inicio.Value < agoraMs ? inicio.Value : agoraMs,
+                };
+                _estado.Sessoes.Add(sessao);
+            }
+
+            sessao.Respostas = new Dictionary<string, string?>(respostas);
+            sessao.AtualizadoEm = agora;
+            Salvar();
+            return (SessaoErro.Nenhum, ToSessaoDto(sessao, inscricao));
+        }
+    }
+
+    /// <summary>Sessão salva no servidor (ou null). Também devolve o tempo extra concedido.</summary>
+    public SessaoDto? GetSessao(string inscricaoId)
+    {
+        lock (_lock)
+        {
+            var inscricao = _estado.Inscricoes.FirstOrDefault(i =>
+                string.Equals(i.Id, inscricaoId, StringComparison.Ordinal));
+            if (inscricao is null) return null;
+
+            var sessao = _estado.Sessoes.FirstOrDefault(s => s.InscricaoId == inscricao.Id);
+            // Sem sessão salva, ainda informa o tempo extra (o front soma à duração).
+            return sessao is null
+                ? new SessaoDto(0, new(), false, inscricao.ExtraMinutos, DateTimeOffset.UtcNow)
+                : ToSessaoDto(sessao, inscricao);
+        }
+    }
+
+    private static SessaoDto ToSessaoDto(SessaoRecord s, InscricaoRecord i) =>
+        new(s.Inicio, s.Respostas, s.PausadaEm is not null, i.ExtraMinutos, s.AtualizadoEm);
+
+    // ------------------------------------------- admin: gestão de candidatos
+
+    /// <summary>Inscrições do edital atual com situação (enviada/em prova/pausada) para o painel.</summary>
+    public List<AdminInscricaoDto> ListarInscricoesAdmin()
+    {
+        lock (_lock)
+        {
+            var editalId = _estado.Edital.Id;
+            return _estado.Inscricoes
+                .Where(i => i.EditalId == editalId)
+                .OrderByDescending(i => i.CriadoEm)
+                .Select(i =>
+                {
+                    var resultado = _estado.Resultados.FirstOrDefault(r =>
+                        r.InscricaoId == i.Id && r.EditalId == editalId);
+                    var sessao = _estado.Sessoes.FirstOrDefault(s => s.InscricaoId == i.Id);
+                    return new AdminInscricaoDto(
+                        i.Id, i.Nome, i.Email, i.Idade, i.Cpf,
+                        i.Carreira, Carreiras.Get(i.Carreira)?.Nome ?? i.Carreira,
+                        i.Protocolo, i.CriadoEm, i.ExtraMinutos,
+                        resultado is not null, resultado?.EnviadoEm, resultado?.Percentual,
+                        sessao is null
+                            ? null
+                            : new AdminSessaoDto(
+                                sessao.Inicio,
+                                sessao.Respostas.Count(kv => !string.IsNullOrWhiteSpace(kv.Value)),
+                                sessao.PausadaEm is not null,
+                                sessao.AtualizadoEm));
+                })
+                .ToList();
+        }
+    }
+
+    /// <summary>Apaga a inscrição, o resultado e a sessão (libera a tentativa única do candidato).</summary>
+    public bool ExcluirInscricao(string inscricaoId)
+    {
+        lock (_lock)
+        {
+            var removidas = _estado.Inscricoes.RemoveAll(i => i.Id == inscricaoId);
+            _estado.Resultados.RemoveAll(r => r.InscricaoId == inscricaoId);
+            _estado.Sessoes.RemoveAll(s => s.InscricaoId == inscricaoId);
+            if (removidas == 0) return false;
+            Salvar();
+            return true;
+        }
+    }
+
+    /// <summary>Apaga só o resultado e a sessão, mantendo a inscrição — o candidato pode refazer a prova.</summary>
+    public bool ExcluirResultado(string inscricaoId)
+    {
+        lock (_lock)
+        {
+            var removidos = _estado.Resultados.RemoveAll(r => r.InscricaoId == inscricaoId);
+            _estado.Sessoes.RemoveAll(s => s.InscricaoId == inscricaoId);
+            if (removidos == 0) return false;
+            Salvar();
+            return true;
+        }
+    }
+
+    /// <summary>Concede (ou reduz, com valor negativo) tempo extra. Retorna o total ou null se não achou.</summary>
+    public int? AdicionarTempoExtra(string inscricaoId, int minutos)
+    {
+        lock (_lock)
+        {
+            var inscricao = _estado.Inscricoes.FirstOrDefault(i => i.Id == inscricaoId);
+            if (inscricao is null) return null;
+            inscricao.ExtraMinutos = Math.Clamp(inscricao.ExtraMinutos + minutos, 0, 600);
+            Salvar();
+            return inscricao.ExtraMinutos;
+        }
+    }
+
+    /// <summary>
+    /// Pausa/retoma a prova de um candidato. Pausar congela o relógio (o estado já está
+    /// salvo no servidor); retomar desloca o Início pelo tempo pausado — nada é perdido.
+    /// </summary>
+    public (bool ok, string? erro) PausarSessao(string inscricaoId, bool pausar)
+    {
+        lock (_lock)
+        {
+            var sessao = _estado.Sessoes.FirstOrDefault(s => s.InscricaoId == inscricaoId);
+            if (sessao is null)
+                return (false, "O candidato ainda não iniciou a prova (nenhuma sessão salva).");
+
+            var agora = DateTimeOffset.UtcNow;
+            if (pausar)
+            {
+                sessao.PausadaEm ??= agora;
+            }
+            else if (sessao.PausadaEm is { } pausadaEm)
+            {
+                // Devolve o tempo pausado: o relógio volta exatamente de onde parou.
+                sessao.Inicio += (long)(agora - pausadaEm).TotalMilliseconds;
+                sessao.PausadaEm = null;
+            }
+            sessao.AtualizadoEm = agora;
+            Salvar();
+            return (true, null);
         }
     }
 
@@ -219,7 +386,7 @@ public sealed class AppStore
         lock (_lock)
         {
             var novoId = string.IsNullOrWhiteSpace(id)
-                ? $"PCSP-{DateTime.UtcNow:yyyyMMdd-HHmmss}"
+                ? $"PF-{DateTime.UtcNow:yyyyMMdd-HHmmss}"
                 : id.Trim();
 
             _estado.Edital = new EditalState
@@ -228,6 +395,8 @@ public sealed class AppStore
                 Fechada = false,
                 AtualizadoEm = DateTimeOffset.UtcNow,
             };
+            // Sessões em andamento pertencem ao ciclo anterior — descarta.
+            _estado.Sessoes.Clear();
             Salvar();
             return _estado.Edital;
         }
@@ -443,7 +612,7 @@ public sealed class AppStore
     {
         var ano = DateTime.UtcNow.Year;
         var seq = Random.Shared.Next(100000, 1000000);
-        return $"PCSP-{ano}-{seq}";
+        return $"PF-{ano}-{seq}";
     }
 
     private EstadoPersistente Carregar(IConfiguration cfg)
@@ -469,7 +638,7 @@ public sealed class AppStore
             else
             {
                 var editalId = cfg["Edital:Id"];
-                if (string.IsNullOrWhiteSpace(editalId)) editalId = $"PCSP-{DateTime.UtcNow.Year}";
+                if (string.IsNullOrWhiteSpace(editalId)) editalId = $"PF-{DateTime.UtcNow.Year}";
                 e.Edital = new EditalState { Id = editalId, Fechada = false, AtualizadoEm = null };
                 return e;
             }
@@ -536,7 +705,7 @@ public sealed class AppStore
 
         using (var cmd = _connection.CreateCommand())
         {
-            cmd.CommandText = @"SELECT Id, Nome, Email, Idade, Cpf, Carreira, Protocolo, CriadoEm, EditalId
+            cmd.CommandText = @"SELECT Id, Nome, Email, Idade, Cpf, Carreira, Protocolo, CriadoEm, EditalId, ExtraMinutos
                                 FROM Inscricoes";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -552,6 +721,33 @@ public sealed class AppStore
                     Protocolo = reader.GetString(6),
                     CriadoEm = DateTimeOffset.Parse(reader.GetString(7)),
                     EditalId = reader.GetString(8),
+                    ExtraMinutos = reader.GetInt32(9),
+                });
+            }
+        }
+
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT InscricaoId, Inicio, Respostas, AtualizadoEm, PausadaEm FROM Sessoes";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                Dictionary<string, string?>? respostas = null;
+                try
+                {
+                    respostas = JsonSerializer.Deserialize<Dictionary<string, string?>>(reader.GetString(2));
+                }
+                catch
+                {
+                    // JSON corrompido: descarta as respostas, mas mantém a sessão (início/pausa).
+                }
+                e.Sessoes.Add(new SessaoRecord
+                {
+                    InscricaoId = reader.GetString(0),
+                    Inicio = reader.GetInt64(1),
+                    Respostas = respostas ?? new(),
+                    AtualizadoEm = DateTimeOffset.Parse(reader.GetString(3)),
+                    PausadaEm = reader.IsDBNull(4) ? null : DateTimeOffset.Parse(reader.GetString(4)),
                 });
             }
         }
@@ -702,6 +898,14 @@ public sealed class AppStore
                 CorrigidaEm TEXT,
                 PRIMARY KEY (InscricaoId, QuestaoId)
             );
+            CREATE TABLE IF NOT EXISTS Sessoes (
+                InscricaoId TEXT PRIMARY KEY,
+                Inicio BIGINT NOT NULL,
+                Respostas TEXT NOT NULL,
+                AtualizadoEm TEXT NOT NULL,
+                PausadaEm TEXT
+            );
+            ALTER TABLE Inscricoes ADD COLUMN IF NOT EXISTS ExtraMinutos INTEGER NOT NULL DEFAULT 0;
         ";
         cmd.ExecuteNonQuery();
     }
@@ -780,12 +984,13 @@ public sealed class AppStore
 
             ExecuteNonQuery("DELETE FROM Discursivas", null, tx);
             ExecuteNonQuery("DELETE FROM Resultados", null, tx);
+            ExecuteNonQuery("DELETE FROM Sessoes", null, tx);
             ExecuteNonQuery("DELETE FROM Inscricoes", null, tx);
 
             foreach (var inscricao in _estado.Inscricoes)
             {
-                ExecuteNonQuery(@"INSERT INTO Inscricoes (Id, Nome, Email, Idade, Cpf, Carreira, Protocolo, CriadoEm, EditalId)
-                                   VALUES (@Id, @Nome, @Email, @Idade, @Cpf, @Carreira, @Protocolo, @CriadoEm, @EditalId)",
+                ExecuteNonQuery(@"INSERT INTO Inscricoes (Id, Nome, Email, Idade, Cpf, Carreira, Protocolo, CriadoEm, EditalId, ExtraMinutos)
+                                   VALUES (@Id, @Nome, @Email, @Idade, @Cpf, @Carreira, @Protocolo, @CriadoEm, @EditalId, @ExtraMinutos)",
                     new Dictionary<string, object?>
                     {
                         ["@Id"] = inscricao.Id,
@@ -797,6 +1002,21 @@ public sealed class AppStore
                         ["@Protocolo"] = inscricao.Protocolo,
                         ["@CriadoEm"] = inscricao.CriadoEm.ToString("o"),
                         ["@EditalId"] = inscricao.EditalId,
+                        ["@ExtraMinutos"] = inscricao.ExtraMinutos,
+                    }, tx);
+            }
+
+            foreach (var sessao in _estado.Sessoes)
+            {
+                ExecuteNonQuery(@"INSERT INTO Sessoes (InscricaoId, Inicio, Respostas, AtualizadoEm, PausadaEm)
+                                   VALUES (@InscricaoId, @Inicio, @Respostas, @AtualizadoEm, @PausadaEm)",
+                    new Dictionary<string, object?>
+                    {
+                        ["@InscricaoId"] = sessao.InscricaoId,
+                        ["@Inicio"] = sessao.Inicio,
+                        ["@Respostas"] = JsonSerializer.Serialize(sessao.Respostas),
+                        ["@AtualizadoEm"] = sessao.AtualizadoEm.ToString("o"),
+                        ["@PausadaEm"] = sessao.PausadaEm?.ToString("o"),
                     }, tx);
             }
 

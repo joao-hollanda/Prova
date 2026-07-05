@@ -2,8 +2,8 @@ import { createContext, useContext, useEffect, useState } from 'react'
 
 const InscricaoContext = createContext(null)
 
-const STORAGE_KEY = 'pcsp_inscricao'
-const STORAGE_RESULTADO = 'pcsp_resultado'
+const STORAGE_KEY = 'pf_inscricao'
+const STORAGE_RESULTADO = 'pf_resultado'
 
 function carregar(chave) {
   try {

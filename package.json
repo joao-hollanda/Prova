@@ -1,9 +1,9 @@
 {
-  "name": "concurso-pcsp",
+  "name": "concurso-pf",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Concurso Público (RP) da Polícia Civil do Estado de São Paulo - Frontend React",
+  "description": "Concurso Público (RP) da Polícia Federal - Frontend React",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

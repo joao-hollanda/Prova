@@ -25,9 +25,9 @@ export default function Header() {
     <header className="header">
       <div className="header__inner">
         <Link to="/" className="header__brand">
-          <img src="/Logo.png" alt="Logo PCSP" className="header__brasao" />
+          <img src="/Logo.png" alt="Logo Polícia Federal" className="header__brasao" />
           <div className="header__titulo">
-            <strong>Polícia Civil do Estado de São Paulo</strong>
+            <strong>Polícia Federal</strong>
             <span>Concurso Público · Ilha em São Paulo</span>
           </div>
         </Link>

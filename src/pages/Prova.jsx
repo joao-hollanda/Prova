@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useInscricao } from '../context/InscricaoContext.jsx'
-import { getProva, enviarProva } from '../api/provas.js'
+import { getProva, enviarProva, getSessaoServidor, salvarSessaoServidor } from '../api/provas.js'
 import { validarInscricao } from '../api/inscricoes.js'
 import { getStatusProva } from '../api/admin.js'
 import { getCarreira } from '../data/carreiras.js'
@@ -22,14 +22,18 @@ export default function Prova() {
   const [erro, setErro] = useState(null)
   const [provaFechada, setProvaFechada] = useState(false)
   const [inscricaoInvalida, setInscricaoInvalida] = useState(null)
+  const [pausada, setPausada] = useState(false)
   const [respostas, setRespostas] = useState({})
   const [enviando, setEnviando] = useState(false)
   const [confirmar, setConfirmar] = useState(false)
+  const [fimEm, setFimEm] = useState(null) // horário-limite (estado: re-renderiza o Timer se mudar)
 
   const respostasRef = useRef({})
   const enviadoRef = useRef(false)
   const inicioRef = useRef(Date.now()) // instante de início (persistido)
   const fimRef = useRef(null) // horário-limite absoluto (epoch ms)
+  const duracaoRef = useRef(90) // duração base da prova (min), sem o tempo extra
+  const backupTimerRef = useRef(null) // debounce do backup no servidor
 
   // Carrega a prova da carreira escolhida (e verifica se a prova está aberta).
   // Também valida no servidor a inscrição salva no navegador ANTES de começar —
@@ -37,12 +41,26 @@ export default function Prova() {
   useEffect(() => {
     let ativo = true
     setCarregando(true)
-    Promise.all([getProva(inscricao.carreira), getStatusProva(), validarInscricao(inscricao.id)])
-      .then(([p, status, valida]) => {
+    Promise.all([
+      getProva(inscricao.carreira),
+      getStatusProva(),
+      validarInscricao(inscricao.id),
+      getSessaoServidor(inscricao.id),
+    ])
+      .then(([p, status, valida, servidor]) => {
         if (!ativo) return
-        // Restaura a sessão se já existir (reload/reabertura) ou cria uma nova.
-        // Assim cronômetro e respostas NÃO resetam ao recarregar a página.
-        const existente = carregarSessaoProva(inscricao.id)
+
+        // Prova pausada pela administração: o progresso está salvo; não entra agora.
+        if (servidor?.pausada) {
+          setPausada(true)
+          return
+        }
+
+        // Restaura a sessão local (reload/reabertura) e/ou a salva no servidor
+        // (retomada em outro navegador/dispositivo). Cronômetro e respostas não resetam.
+        const local = carregarSessaoProva(inscricao.id)
+        const temServidor = !!servidor && servidor.inicio > 0
+        const existente = local || temServidor
 
         // Uma sessão EM ANDAMENTO tem prioridade sobre os bloqueios abaixo: mesmo
         // que a inscrição tenha sumido do servidor (o envio a recria) ou o certame
@@ -56,14 +74,27 @@ export default function Prova() {
           return
         }
 
-        const sessao = existente ?? { inicio: Date.now(), respostas: {} }
-        if (!existente) salvarSessaoProva(inscricao.id, sessao)
+        // O início do SERVIDOR é o oficial (impede "ganhar tempo" limpando o navegador);
+        // as respostas locais prevalecem por chave (são as mais recentes deste aparelho).
+        const inicio = temServidor ? servidor.inicio : (local?.inicio ?? Date.now())
+        const respostasIniciais = { ...(servidor?.respostas || {}), ...(local?.respostas || {}) }
+        const sessao = { inicio, respostas: respostasIniciais }
+        salvarSessaoProva(inscricao.id, sessao)
 
-        inicioRef.current = sessao.inicio
-        fimRef.current = sessao.inicio + (p.duracaoMinutos ?? 90) * 60000
-        respostasRef.current = sessao.respostas || {}
-        setRespostas(sessao.respostas || {})
+        duracaoRef.current = p.duracaoMinutos ?? 90
+        inicioRef.current = inicio
+        const fim = inicio + (duracaoRef.current + (servidor?.extraMinutos || 0)) * 60000
+        fimRef.current = fim
+        setFimEm(fim)
+        respostasRef.current = respostasIniciais
+        setRespostas(respostasIniciais)
         setProva(p)
+
+        // Primeiro backup imediato: registra a sessão no servidor (o painel admin
+        // passa a ver o candidato "em prova") e sincroniza pausa/tempo extra.
+        salvarSessaoServidor(inscricao.id, inicio, respostasIniciais).then(
+          (s) => ativo && aplicarSessaoServidor(s),
+        )
       })
       .catch((e) => ativo && setErro(e.message || 'Erro ao carregar a prova.'))
       .finally(() => ativo && setCarregando(false))
@@ -71,6 +102,53 @@ export default function Prova() {
       ativo = false
     }
   }, [inscricao.carreira, inscricao.id])
+
+  /**
+   * Aplica o retorno do servidor sobre a sessão: pausa administrativa, tempo extra
+   * concedido e deslocamento do início (após uma retomada) valem imediatamente.
+   */
+  function aplicarSessaoServidor(s) {
+    if (!s || enviadoRef.current) return
+    if (s.pausada) setPausada(true)
+    if (s.inicio > 0) inicioRef.current = s.inicio
+    const novoFim = inicioRef.current + (duracaoRef.current + (s.extraMinutos || 0)) * 60000
+    if (novoFim !== fimRef.current) {
+      fimRef.current = novoFim
+      setFimEm(novoFim)
+    }
+  }
+
+  /** Backup do progresso no servidor (melhor esforço, com debounce). */
+  function agendarBackup() {
+    if (backupTimerRef.current) return
+    backupTimerRef.current = setTimeout(() => {
+      backupTimerRef.current = null
+      if (enviadoRef.current) return
+      salvarSessaoServidor(inscricao.id, inicioRef.current, respostasRef.current).then(
+        aplicarSessaoServidor,
+      )
+    }, 10000)
+  }
+
+  // Heartbeat: mesmo sem novas respostas, sincroniza com o servidor a cada 30s —
+  // é por aqui que pausa e tempo extra chegam a um candidato parado na prova.
+  useEffect(() => {
+    if (!prova) return undefined
+    const i = setInterval(() => {
+      if (enviadoRef.current || pausada) return
+      salvarSessaoServidor(inscricao.id, inicioRef.current, respostasRef.current).then(
+        aplicarSessaoServidor,
+      )
+    }, 30000)
+    return () => {
+      clearInterval(i)
+      if (backupTimerRef.current) {
+        clearTimeout(backupTimerRef.current)
+        backupTimerRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prova, pausada, inscricao.id])
 
   // Sessão inválida (inscrição sumiu do servidor): limpa tudo e volta à inscrição.
   function refazerInscricao() {
@@ -87,6 +165,7 @@ export default function Prova() {
       salvarSessaoProva(inscricao.id, { inicio: inicioRef.current, respostas: novo })
       return novo
     })
+    agendarBackup() // backup no servidor (debounce) — permite retomar em outro aparelho
   }
 
   const finalizar = useCallback(
@@ -128,9 +207,11 @@ export default function Prova() {
   )
 
   // Avisa o candidato se tentar fechar/recarregar a aba durante a prova.
+  const pausadaRef = useRef(false)
+  pausadaRef.current = pausada
   useEffect(() => {
     function aviso(e) {
-      if (enviadoRef.current) return
+      if (enviadoRef.current || pausadaRef.current) return // pausada: progresso já está salvo
       e.preventDefault()
       e.returnValue = ''
     }
@@ -184,6 +265,23 @@ export default function Prova() {
     )
   }
 
+  if (pausada) {
+    return (
+      <div className="pagina estado-carregando">
+        <div className="bloqueio-icone" aria-hidden>⏸️</div>
+        <h1>Prova pausada</h1>
+        <p>
+          Sua prova foi pausada pela administração do certame. <strong>Todo o seu progresso está
+          salvo</strong> e o cronômetro está congelado — nenhum tempo será perdido. Quando a
+          administração retomar, recarregue esta página para continuar de onde parou.
+        </p>
+        <button className="btn btn--primario" onClick={() => window.location.reload()}>
+          Verificar novamente
+        </button>
+      </div>
+    )
+  }
+
   if (provaFechada) {
     return (
       <div className="pagina estado-carregando">
@@ -208,7 +306,7 @@ export default function Prova() {
             <strong>{inscricao.protocolo}</strong>
           </p>
         </div>
-        <Timer fimEm={fimRef.current} onExpirar={() => finalizar('tempo_esgotado')} />
+        <Timer fimEm={fimEm} onExpirar={() => finalizar('tempo_esgotado')} />
       </div>
 
       <div className="prova__progresso">

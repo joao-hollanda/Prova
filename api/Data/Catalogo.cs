@@ -1,14 +1,14 @@
-namespace Pcsp.Api;
+namespace Pf.Api;
 
 /// <summary>Carreiras do certame (espelha src/data/carreiras.js — apenas o que a API expõe).</summary>
 public static class Carreiras
 {
     private static readonly Dictionary<string, Carreira> _porId = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["agente"]       = new("agente", "Agente de Polícia", 90, 5),
-        ["investigador"] = new("investigador", "Investigador de Polícia", 90, 3),
-        ["perito"]       = new("perito", "Perito Criminal", 100, 1),
-        ["delegado"]     = new("delegado", "Delegado de Polícia", 120, 1),
+        ["agente"]   = new("agente", "Agente de Polícia Federal", 90, 5),
+        ["escrivao"] = new("escrivao", "Escrivão de Polícia Federal", 90, 3),
+        ["perito"]   = new("perito", "Perito Criminal Federal", 100, 1),
+        ["delegado"] = new("delegado", "Delegado de Polícia Federal", 120, 1),
     };
 
     public static IReadOnlyCollection<Carreira> Todas => _porId.Values;
@@ -32,7 +32,7 @@ public static class Questoes
         new("pt-01", "Língua Portuguesa", "fechada",
             "Assinale a alternativa em que o uso da CRASE está CORRETO.", 1,
             new() {
-                A("a", "Entreguei o relatório à os investigadores."),
+                A("a", "Entreguei o relatório à os escrivães."),
                 A("b", "Refiro-me à reunião marcada para ontem."),
                 A("c", "O suspeito saiu à pé da delegacia."),
                 A("d", "Estou disposto a ir à qualquer lugar."),
@@ -111,12 +111,12 @@ public static class Questoes
                 A("e", "Nenhum suspeito falou a verdade."),
             }, "c"),
         new("cg-01", "Conhecimentos Gerais e Atualidades", "fechada",
-            "A Polícia Civil exerce a função de polícia judiciária. Isso significa que ela atua principalmente:", 1,
+            "A Polícia Federal exerce, entre outras, a função de polícia judiciária da União. Isso significa que ela atua principalmente:", 1,
             new() {
                 A("a", "no patrulhamento ostensivo das ruas"),
                 A("b", "na apuração de infrações penais, por meio de investigação e inquérito"),
-                A("c", "na fiscalização de tributos"),
-                A("d", "na guarda das fronteiras do país"),
+                A("c", "na fiscalização de tributos municipais"),
+                A("d", "na administração dos presídios federais"),
                 A("e", "no controle do tráfego aéreo"),
             }, "b"),
         new("cg-02", "Conhecimentos Gerais e Atualidades", "fechada",
@@ -165,7 +165,7 @@ public static class Questoes
                 A("e", "a prisão em flagrante"),
             }, "c"),
         new("disc-comum-01", "Questão Discursiva", "aberta",
-            "Disserte sobre a importância da ética e da imparcialidade na atuação do policial civil, citando ao menos uma consequência negativa do abuso de autoridade para a sociedade.",
+            "Disserte sobre a importância da ética e da imparcialidade na atuação do policial federal, citando ao menos uma consequência negativa do abuso de autoridade para a sociedade.",
             10, Alternativas: null, Gabarito: null, LinhasSugeridas: 12),
     };
 
@@ -212,46 +212,46 @@ public static class Questoes
             10, Alternativas: null, Gabarito: null, LinhasSugeridas: 12),
     };
 
-    private static readonly List<Questao> INVESTIGADOR = new()
+    private static readonly List<Questao> ESCRIVAO = new()
     {
-        new("in-01", "Direito e Investigação", "fechada",
-            "A interceptação telefônica para fins de investigação criminal só é válida quando:", 1,
+        new("es-01", "Direito e Processo Penal", "fechada",
+            "No auto de prisão em flagrante, cabe ao escrivão de polícia:", 1,
             new() {
-                A("a", "o delegado decide sozinho realizá-la"),
-                A("b", "há autorização judicial, nos termos da lei"),
-                A("c", "a vítima pede verbalmente"),
-                A("d", "qualquer agente julgar necessário"),
-                A("e", "é feita em sigilo, sem qualquer regra"),
+                A("a", "decretar a prisão preventiva do conduzido"),
+                A("b", "reduzir a termo as declarações e lavrar o auto, garantindo a formalização do ato"),
+                A("c", "definir a pena aplicável ao crime"),
+                A("d", "julgar a legalidade da prisão"),
+                A("e", "dispensar a presença de testemunhas"),
             }, "b"),
-        new("in-02", "Direito e Investigação", "fechada",
-            "No processo penal, o \"indício\" é definido como:", 1,
+        new("es-02", "Direito e Processo Penal", "fechada",
+            "Os atos lavrados pelo escrivão de polícia gozam de fé pública. Isso significa que:", 1,
             new() {
-                A("a", "uma prova plena e definitiva da culpa"),
-                A("b", "a circunstância conhecida e provada que, tendo relação com o fato, autoriza concluir a existência de outra"),
-                A("c", "um simples boato sem comprovação"),
-                A("d", "a confissão espontânea do réu"),
-                A("e", "a sentença proferida pelo juiz"),
+                A("a", "não podem jamais ser questionados"),
+                A("b", "presumem-se verdadeiros até prova em contrário"),
+                A("c", "têm valor de sentença judicial"),
+                A("d", "dispensam a assinatura da autoridade policial"),
+                A("e", "só valem se registrados em cartório extrajudicial"),
             }, "b"),
-        new("in-03", "Raciocínio Lógico", "fechada",
-            "Três suspeitos foram ouvidos. A afirma: \"Fui eu\". B afirma: \"A está mentindo\". C afirma: \"Não fui eu\". Sabendo que APENAS UM falou a verdade, quem necessariamente disse a verdade?", 1,
+        new("es-03", "Raciocínio Lógico", "fechada",
+            "Em um cartório policial, os inquéritos são autuados seguindo a sequência 3, 6, 11, 18, 27, ... Qual é o próximo número da sequência?", 1,
             new() {
-                A("a", "A"),
-                A("b", "B"),
-                A("c", "C"),
-                A("d", "É impossível determinar"),
-                A("e", "Todos disseram a verdade"),
-            }, "b"),
-        new("in-04", "Direito e Investigação", "fechada",
-            "A colaboração premiada é um instrumento de investigação no qual:", 1,
+                A("a", "34"),
+                A("b", "36"),
+                A("c", "38"),
+                A("d", "40"),
+                A("e", "41"),
+            }, "c"),
+        new("es-04", "Direito e Processo Penal", "fechada",
+            "Ao formalizar o depoimento de uma testemunha durante o inquérito, o documento produzido pelo escrivão denomina-se:", 1,
             new() {
-                A("a", "o investigado é obrigado a confessar"),
-                A("b", "o colaborador recebe benefícios legais ao auxiliar de forma efetiva a investigação ou o processo"),
-                A("c", "o juiz interroga apenas a vítima"),
-                A("d", "a polícia produz provas falsas"),
-                A("e", "o caso é automaticamente arquivado"),
+                A("a", "sentença"),
+                A("b", "termo de declarações"),
+                A("c", "denúncia"),
+                A("d", "acórdão"),
+                A("e", "habeas corpus"),
             }, "b"),
-        new("disc-in-01", "Questão Discursiva", "aberta",
-            "Explique como o investigador pode utilizar provas testemunhais e materiais para identificar a autoria de um crime, sempre respeitando os direitos fundamentais do investigado.",
+        new("disc-es-01", "Questão Discursiva", "aberta",
+            "Explique a função do escrivão de polícia na formalização do inquérito policial e discorra sobre a importância da correta documentação dos atos para a validade da prova e o exercício da ampla defesa.",
             10, Alternativas: null, Gabarito: null, LinhasSugeridas: 12),
     };
 
@@ -361,10 +361,10 @@ public static class Questoes
 
     private static readonly Dictionary<string, List<Questao>> ESPECIFICAS = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["agente"]       = AGENTE,
-        ["investigador"] = INVESTIGADOR,
-        ["perito"]       = PERITO,
-        ["delegado"]     = DELEGADO,
+        ["agente"]   = AGENTE,
+        ["escrivao"] = ESCRIVAO,
+        ["perito"]   = PERITO,
+        ["delegado"] = DELEGADO,
     };
 
     // Nível de dificuldade por questão (facil=1, medio=2, dificil=3). Toda questão tem um nível;
@@ -382,9 +382,9 @@ public static class Questoes
         // AGENTE
         ["ag-01"] = "facil", ["ag-02"] = "medio", ["ag-03"] = "medio", ["ag-04"] = "dificil",
         ["disc-ag-01"] = "medio",
-        // INVESTIGADOR
-        ["in-01"] = "medio", ["in-02"] = "dificil", ["in-03"] = "dificil", ["in-04"] = "medio",
-        ["disc-in-01"] = "medio",
+        // ESCRIVAO
+        ["es-01"] = "medio", ["es-02"] = "medio", ["es-03"] = "dificil", ["es-04"] = "medio",
+        ["disc-es-01"] = "medio",
         // PERITO
         ["pe-01"] = "medio", ["pe-02"] = "medio", ["pe-03"] = "facil", ["pe-04"] = "medio", ["pe-05"] = "facil",
         ["disc-pe-01"] = "medio",

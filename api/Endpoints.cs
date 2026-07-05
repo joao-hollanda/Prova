@@ -1,4 +1,4 @@
-namespace Pcsp.Api;
+namespace Pf.Api;
 
 public static class Endpoints
 {
@@ -103,6 +103,32 @@ public static class Endpoints
             };
         })
         .RequireRateLimiting("escrita");
+
+        // Sessão de prova no SERVIDOR (backup do progresso): permite retomar a prova
+        // em outro navegador/dispositivo e dá visibilidade ao painel admin.
+        // Sem política "escrita" (o front salva com throttle); vale o limite global.
+        api.MapGet("/provas/sessao/{inscricaoId}", (string inscricaoId, AppStore store) =>
+        {
+            var sessao = store.GetSessao(inscricaoId);
+            return sessao is null
+                ? Erro(404, "Inscrição não encontrada.")
+                : Results.Ok(sessao);
+        });
+
+        api.MapPost("/provas/sessao", (SessaoSalvarRequest req, AppStore store) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.InscricaoId))
+                return Erro(400, "Inscrição inválida.");
+
+            var respostas = Validacoes.SanitizarRespostas(req.Respostas);
+            var (erro, sessao) = store.SalvarSessao(req.InscricaoId!, req.Inicio, respostas);
+            return erro switch
+            {
+                AppStore.SessaoErro.InscricaoNaoEncontrada => Erro(404, "Inscrição não encontrada."),
+                AppStore.SessaoErro.JaEnviada => Erro(409, "A prova desta inscrição já foi enviada."),
+                _ => Results.Ok(sessao),
+            };
+        });
     }
 
     // --------------------------------------------------------------- /api/admin
@@ -149,6 +175,59 @@ public static class Endpoints
         // Sortear a prova (mesma para todos) + sugerir nota de corte — PROTEGIDO.
         admin.MapPost("/prova/sortear", (HttpContext ctx, AppStore store, AdminAuth auth) =>
             GuardaAdmin(ctx, auth) ?? Results.Ok(store.Sortear()));
+
+        // ------- Gestão de candidatos (ferramentas de contingência) — PROTEGIDO -------
+
+        // Lista as inscrições do edital atual com situação (não iniciou/em prova/pausada/enviada).
+        admin.MapGet("/inscricoes", (HttpContext ctx, AppStore store, AdminAuth auth) =>
+            GuardaAdmin(ctx, auth) ?? Results.Ok(store.ListarInscricoesAdmin()));
+
+        // Exclui inscrição + resultado + sessão (libera a tentativa única do candidato).
+        admin.MapPost("/inscricoes/excluir", (HttpContext ctx, InscricaoAcaoRequest req, AppStore store, AdminAuth auth) =>
+        {
+            var guarda = GuardaAdmin(ctx, auth);
+            if (guarda is not null) return guarda;
+            if (string.IsNullOrWhiteSpace(req.InscricaoId)) return Erro(400, "Informe a inscrição.");
+            return store.ExcluirInscricao(req.InscricaoId!)
+                ? Results.Ok(new { mensagem = "Inscrição excluída." })
+                : Erro(404, "Inscrição não encontrada.");
+        });
+
+        // Exclui só o resultado (e a sessão), mantendo a inscrição — o candidato refaz a prova.
+        admin.MapPost("/resultados/excluir", (HttpContext ctx, InscricaoAcaoRequest req, AppStore store, AdminAuth auth) =>
+        {
+            var guarda = GuardaAdmin(ctx, auth);
+            if (guarda is not null) return guarda;
+            if (string.IsNullOrWhiteSpace(req.InscricaoId)) return Erro(400, "Informe a inscrição.");
+            return store.ExcluirResultado(req.InscricaoId!)
+                ? Results.Ok(new { mensagem = "Resultado excluído — o candidato pode refazer a prova." })
+                : Erro(404, "Resultado não encontrado.");
+        });
+
+        // Concede tempo extra (minutos; negativo reduz) a um candidato.
+        admin.MapPost("/inscricoes/tempo", (HttpContext ctx, TempoExtraRequest req, AppStore store, AdminAuth auth) =>
+        {
+            var guarda = GuardaAdmin(ctx, auth);
+            if (guarda is not null) return guarda;
+            if (string.IsNullOrWhiteSpace(req.InscricaoId) || req.AdicionarMinutos is null or 0)
+                return Erro(400, "Informe a inscrição e os minutos a adicionar.");
+            var total = store.AdicionarTempoExtra(req.InscricaoId!, Math.Clamp(req.AdicionarMinutos.Value, -600, 600));
+            return total is null
+                ? Erro(404, "Inscrição não encontrada.")
+                : Results.Ok(new { mensagem = $"Tempo extra atual: {total} min.", extraMinutos = total });
+        });
+
+        // Pausa/retoma a prova de um candidato (o relógio congela e nada se perde).
+        admin.MapPost("/sessao/pausar", (HttpContext ctx, PausarRequest req, AppStore store, AdminAuth auth) =>
+        {
+            var guarda = GuardaAdmin(ctx, auth);
+            if (guarda is not null) return guarda;
+            if (string.IsNullOrWhiteSpace(req.InscricaoId)) return Erro(400, "Informe a inscrição.");
+            var (ok, erro) = store.PausarSessao(req.InscricaoId!, req.Pausar);
+            return ok
+                ? Results.Ok(new { mensagem = req.Pausar ? "Prova pausada." : "Prova retomada." })
+                : Erro(409, erro ?? "Não foi possível alterar a sessão.");
+        });
 
         // Listar respostas discursivas para correção da banca — PROTEGIDO.
         admin.MapGet("/discursivas", (HttpContext ctx, AppStore store, AdminAuth auth) =>

@@ -50,6 +50,37 @@ export async function enviarProva(payload) {
   })
 }
 
+/**
+ * Busca a sessão de prova salva no SERVIDOR (backup do progresso).
+ * Retorna null se não houver (ou em modo mock / falha de rede) — a prova
+ * continua funcionando só com a sessão local.
+ * @returns {Promise<{ inicio, respostas, pausada, extraMinutos } | null>}
+ */
+export async function getSessaoServidor(inscricaoId) {
+  if (USE_MOCK) return null
+  try {
+    return await apiFetch(`/provas/sessao/${inscricaoId}`)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Salva o progresso da prova no SERVIDOR (melhor esforço — nunca atrapalha a prova).
+ * A resposta traz pausada/extraMinutos/inicio atualizados pela administração.
+ */
+export async function salvarSessaoServidor(inscricaoId, inicio, respostas) {
+  if (USE_MOCK) return null
+  try {
+    return await apiFetch('/provas/sessao', {
+      method: 'POST',
+      body: { inscricaoId, inicio, respostas },
+    })
+  } catch {
+    return null
+  }
+}
+
 /** Persiste o resultado para o ranking do painel (apenas no modo mock). */
 function registrarRanking(payload, resultado) {
   const cand = payload.candidato || {}

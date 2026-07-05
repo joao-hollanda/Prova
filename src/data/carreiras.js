@@ -3,7 +3,7 @@
 export const CARREIRAS = [
   {
     id: 'agente',
-    nome: 'Agente de Polícia',
+    nome: 'Agente de Polícia Federal',
     escolaridade: 'Ensino Superior Completo',
     descricao:
       'Atua no apoio às investigações, cumprimento de mandados, diligências de campo e segurança das operações policiais.',
@@ -12,18 +12,18 @@ export const CARREIRAS = [
     areas: ['Língua Portuguesa', 'Matemática e Raciocínio Lógico', 'Conhecimentos Gerais', 'Informática', 'Noções de Direito Penal'],
   },
   {
-    id: 'investigador',
-    nome: 'Investigador de Polícia',
+    id: 'escrivao',
+    nome: 'Escrivão de Polícia Federal',
     escolaridade: 'Ensino Superior Completo',
     descricao:
-      'Responsável pela coleta de informações, levantamento de provas, campanas e identificação de autoria de delitos.',
+      'Responsável por documentar e formalizar os atos do inquérito policial: lavra autos, termos e mandados, dando fé pública aos procedimentos e organizando o cartório da unidade.',
     vagas: 3,
     duracaoMinutos: 90,
-    areas: ['Língua Portuguesa', 'Matemática e Raciocínio Lógico', 'Conhecimentos Gerais', 'Direito e Investigação', 'Informática'],
+    areas: ['Língua Portuguesa', 'Matemática e Raciocínio Lógico', 'Conhecimentos Gerais', 'Direito e Processo Penal', 'Informática'],
   },
   {
     id: 'perito',
-    nome: 'Perito Criminal',
+    nome: 'Perito Criminal Federal',
     escolaridade: 'Ensino Superior Completo (área técnica)',
     descricao:
       'Realiza exames periciais em locais de crime, análise de vestígios, balística, química e produção de laudos técnicos.',
@@ -33,7 +33,7 @@ export const CARREIRAS = [
   },
   {
     id: 'delegado',
-    nome: 'Delegado de Polícia',
+    nome: 'Delegado de Polícia Federal',
     escolaridade: 'Bacharelado em Direito',
     descricao:
       'Autoridade policial que preside o inquérito, dirige a unidade policial e conduz juridicamente as investigações.',

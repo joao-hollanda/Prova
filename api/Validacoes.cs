@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Pcsp.Api;
+namespace Pf.Api;
 
 /// <summary>
 /// Validação e sanitização server-side. Espelha src/utils/validators.js — o front valida

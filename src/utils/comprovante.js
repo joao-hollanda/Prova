@@ -46,7 +46,7 @@ function formatarData(iso) {
 
 /**
  * Gera e baixa um PDF de comprovante com os dados do candidato e o resultado
- * preliminar, para ser apresentado na ACADEPOL.
+ * preliminar, para ser apresentado na ANP (Academia Nacional de Polícia).
  */
 export async function gerarComprovantePDF(inscricao, resultado) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -70,7 +70,7 @@ export async function gerarComprovantePDF(inscricao, resultado) {
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text('POLÍCIA CIVIL DO ESTADO DE SÃO PAULO', textoX, 15)
+  doc.text('POLÍCIA FEDERAL', textoX, 15)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.text('Concurso Público · Ilha em São Paulo', textoX, 22)
@@ -144,7 +144,7 @@ export async function gerarComprovantePDF(inscricao, resultado) {
     y += 10
   }
 
-  // ---- Caixa: apresentação na ACADEPOL ----
+  // ---- Caixa: apresentação na ANP ----
   const boxH = 26
   doc.setFillColor(239, 243, 255)
   doc.setDrawColor(...AZUL)
@@ -153,12 +153,12 @@ export async function gerarComprovantePDF(inscricao, resultado) {
   doc.setTextColor(...AZUL)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  doc.text('APRESENTAÇÃO NA ACADEPOL', margem + 4, y + 8)
+  doc.text('APRESENTAÇÃO NA ANP', margem + 4, y + 8)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9.5)
   doc.setTextColor(...CINZA_TEXTO)
   const aviso =
-    'Apresente este comprovante no momento da sua apresentação na Academia de Polícia (ACADEPOL), ' +
+    'Apresente este comprovante no momento da sua apresentação na Academia Nacional de Polícia (ANP), ' +
     'junto com seu documento de identificação do roleplay.'
   doc.text(doc.splitTextToSize(aviso, W - margem * 2 - 8), margem + 4, y + 14)
 
@@ -170,7 +170,7 @@ export async function gerarComprovantePDF(inscricao, resultado) {
   doc.setFontSize(8)
   doc.setTextColor(120, 130, 150)
   doc.text(`Documento gerado em ${formatarData(new Date().toISOString())}`, margem, H - 12)
-  doc.text('Polícia Civil do Estado de São Paulo — Ilha em São Paulo', W - margem, H - 12, {
+  doc.text('Polícia Federal — Ilha em São Paulo', W - margem, H - 12, {
     align: 'right',
   })
 

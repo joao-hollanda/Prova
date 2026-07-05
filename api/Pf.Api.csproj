@@ -4,8 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>Pcsp.Api</RootNamespace>
-    <AssemblyName>Pcsp.Api</AssemblyName>
+    <RootNamespace>Pf.Api</RootNamespace>
+    <AssemblyName>Pf.Api</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 

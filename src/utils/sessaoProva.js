@@ -6,7 +6,7 @@
 //
 // Formato: { inicio: <ms>, respostas: { [questaoId]: valor } }
 
-const PREFIXO = 'pcsp_sessao_prova_'
+const PREFIXO = 'pf_sessao_prova_'
 
 const chave = (inscricaoId) => `${PREFIXO}${inscricaoId}`
 

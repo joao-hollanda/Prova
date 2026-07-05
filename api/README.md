@@ -1,4 +1,4 @@
-# API — Concurso PCSP (RP) · ASP.NET Core (.NET 9)
+# API — Concurso PF (RP) · ASP.NET Core (.NET 9)
 
 Backend C# que implementa o contrato esperado pelo front React (`../src/api/`). Faz a
 correção da prova **no servidor** (o gabarito nunca sai daqui) e garante **uma única
@@ -18,7 +18,7 @@ Para o front consumir a API real, crie `../.env` (copie de `../.env.example`) co
 ```env
 VITE_USE_MOCK=false
 VITE_API_URL=http://localhost:5000/api
-VITE_ADMIN_SENHA=pcsp2026   # precisa ser IGUAL ao Admin:Token do backend
+VITE_ADMIN_SENHA=PF@ILHASP   # precisa ser IGUAL ao Admin:Senha do backend
 ```
 
 ## 🔐 Segurança aplicada (nível "anti-curioso", não militar)
@@ -75,6 +75,14 @@ evitam isso:
 4. **Fechar o certame não descarta prova em andamento** — o fechamento impede *inscrever/
    iniciar*; quem já estava com a prova aberta consegue enviá-la normalmente (no front, uma
    sessão de prova já iniciada também continua acessível após o fechamento).
+5. **Sessão de prova salva no servidor** — o front faz backup do progresso (respostas + início)
+   a cada resposta (debounce de 10 s) e num heartbeat de 30 s. Se o candidato perder o
+   navegador/dispositivo, retoma de onde parou em qualquer outro; o início oficial fica no
+   servidor (limpar o navegador não reseta o cronômetro).
+6. **Ferramentas do painel (aba Candidatos)** — a administração pode **pausar/retomar** a prova
+   de alguém (o relógio congela; ao retomar, o tempo pausado é devolvido), **conceder tempo
+   extra** por candidato (chega ao vivo, via heartbeat), **liberar um novo envio** (apaga só o
+   resultado) e **excluir uma inscrição** (libera a regra de tentativa única).
 
 ## 📦 Persistência
 
@@ -89,6 +97,8 @@ Em hospedagem, configure `DATABASE_URL`, `POSTGRES_CONNECTION_STRING` ou `Data:C
 | `GET`  | `/api/inscricoes/{id}` | — | Consulta inscrição (o front valida a sessão salva antes da prova) |
 | `GET`  | `/api/provas/{carreiraId}` | — | Prova ATIVA do cargo (sorteada, sem gabarito) |
 | `POST` | `/api/provas/{carreiraId}/respostas` | — | Envia respostas → correção |
+| `GET`  | `/api/provas/sessao/{inscricaoId}` | — | Sessão de prova salva no servidor (retomada) |
+| `POST` | `/api/provas/sessao` | — | Backup do progresso da prova (respostas + início) |
 | `GET`  | `/api/config` | — | Configuração efetiva (vagas/duração/nota) — público |
 | `GET`  | `/api/admin/prova/status` | — | Status (aberto/fechado) — público |
 | `GET`  | `/api/admin/resultados` | `X-Admin-Token` | Ranking do edital atual (PII) |
@@ -98,8 +108,13 @@ Em hospedagem, configure `DATABASE_URL`, `POSTGRES_CONNECTION_STRING` ou `Data:C
 | `GET`  | `/api/admin/discursivas` | `X-Admin-Token` | Lista discursivas para correção |
 | `POST` | `/api/admin/discursivas/corrigir` | `X-Admin-Token` | Lança a nota de uma discursiva |
 | `POST` | `/api/admin/edital/novo` | `X-Admin-Token` | Inicia novo edital (reseta tentativas) |
+| `GET`  | `/api/admin/inscricoes` | `X-Admin-Token` | Candidatos do edital c/ situação (em prova/pausada/enviada) |
+| `POST` | `/api/admin/inscricoes/excluir` | `X-Admin-Token` | Exclui inscrição + resultado + sessão |
+| `POST` | `/api/admin/resultados/excluir` | `X-Admin-Token` | Exclui só o resultado (candidato refaz a prova) |
+| `POST` | `/api/admin/inscricoes/tempo` | `X-Admin-Token` | Concede tempo extra (min; negativo reduz) |
+| `POST` | `/api/admin/sessao/pausar` | `X-Admin-Token` | Pausa/retoma a prova (relógio congela) |
 
-Veja `Pcsp.Api.http` para exemplos prontos de cada chamada.
+Veja `Pf.Api.http` para exemplos prontos de cada chamada.
 
 ## ⚙️ Configuração, sorteio e dificuldade
 
@@ -115,4 +130,4 @@ Veja `Pcsp.Api.http` para exemplos prontos de cada chamada.
 
 ## 🔑 Senha do painel
 
-`Admin:Token` = `PCESP@ILHASP` (em `appsettings.json`). Deve ser igual ao `VITE_ADMIN_SENHA` do front.
+`Admin:Senha` = `PF@ILHASP` (em `appsettings.json`). Deve ser igual ao `VITE_ADMIN_SENHA` do front.

@@ -41,7 +41,7 @@ export default function Home() {
       <p className="aviso-rp">
         🎭 <strong>Simulação de roleplay (RP)</strong> — este site é fictício e faz parte do
         servidor <strong>Ilha em São Paulo</strong>. Não tem <strong>qualquer vínculo</strong> com
-        a Polícia Civil do Estado de São Paulo ou órgãos públicos reais, e nada aqui possui validade
+        a Polícia Federal ou órgãos públicos reais, e nada aqui possui validade
         oficial.
       </p>
 
@@ -49,10 +49,10 @@ export default function Home() {
         <div className="hero__conteudo">
           <span className="hero__selo">Concurso Público · Ilha em São Paulo</span>
           <h1>
-            Polícia Civil do Estado de <span>São Paulo</span>
+            Polícia <span>Federal</span>
           </h1>
           <p>
-            Estão abertas as inscrições para o concurso de ingresso na carreira policial civil.
+            Estão abertas as inscrições para o concurso de ingresso na carreira policial federal.
             Preencha sua inscrição, escolha o cargo desejado e realize a prova objetiva e discursiva.
           </p>
           <div className="hero__acoes">
@@ -82,7 +82,7 @@ export default function Home() {
           </ul>
         </div>
         <div className="hero__brasao">
-          <img src="/Logo.png" alt="Logo da Polícia Civil" />
+          <img src="/Logo.png" alt="Logo da Polícia Federal" />
         </div>
       </section>
 

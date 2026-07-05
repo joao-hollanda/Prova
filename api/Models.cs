@@ -1,4 +1,4 @@
-namespace Pcsp.Api;
+namespace Pf.Api;
 
 // ============================================================================
 // Modelos de domínio (catálogo de questões/carreiras)
@@ -89,6 +89,9 @@ public sealed class InscricaoRecord
     public DateTimeOffset CriadoEm { get; set; }
     public string EditalId { get; set; } = "";
 
+    /// <summary>Minutos extras de prova concedidos pela administração (compensação).</summary>
+    public int ExtraMinutos { get; set; }
+
     public InscricaoResponse ToResponse() =>
         new(Id, Nome, Email, Idade, Cpf, Carreira, Protocolo, CriadoEm);
 }
@@ -121,6 +124,22 @@ public sealed class ResultadoRecord
             Percentual, Acertos, Total, AprovadoPreliminar, TempoGastoSegundos, EnviadoEm);
 }
 
+/// <summary>
+/// Sessão de prova em andamento, salva no SERVIDOR (backup do progresso do candidato).
+/// Permite retomar a prova após perda do navegador/dispositivo e dá visibilidade
+/// ao painel admin (quem está em prova, pausar, conceder tempo extra).
+/// </summary>
+public sealed class SessaoRecord
+{
+    public string InscricaoId { get; set; } = "";
+    public long Inicio { get; set; } // epoch ms (mesmo formato usado pelo front)
+    public Dictionary<string, string?> Respostas { get; set; } = new();
+    public DateTimeOffset AtualizadoEm { get; set; }
+
+    /// <summary>Quando pausada pela administração (o relógio "congela": ao retomar, o Inicio é deslocado).</summary>
+    public DateTimeOffset? PausadaEm { get; set; }
+}
+
 public sealed class EstadoPersistente
 {
     public EditalState Edital { get; set; } = new();
@@ -128,6 +147,7 @@ public sealed class EstadoPersistente
     public ProvaSelecionada? Selecao { get; set; }
     public List<InscricaoRecord> Inscricoes { get; set; } = new();
     public List<ResultadoRecord> Resultados { get; set; } = new();
+    public List<SessaoRecord> Sessoes { get; set; } = new();
 }
 
 // ============================================================================
@@ -171,6 +191,30 @@ public sealed record DiscursivaDto(string QuestaoId, string Area, string Respost
 
 public sealed record CorrecaoResponse(
     string CarreiraId, DateTimeOffset CorrigidoEm, ObjetivasDto Objetivas, List<DiscursivaDto> Discursivas);
+
+// --- Sessão de prova (backup no servidor / retomada) ---
+public sealed record SessaoSalvarRequest(
+    string? InscricaoId, long? Inicio, Dictionary<string, string?>? Respostas);
+
+public sealed record SessaoDto(
+    long Inicio, Dictionary<string, string?> Respostas, bool Pausada,
+    int ExtraMinutos, DateTimeOffset AtualizadoEm);
+
+// --- Admin: gestão de candidatos ---
+public sealed record AdminSessaoDto(
+    long Inicio, int QtdRespostas, bool Pausada, DateTimeOffset AtualizadoEm);
+
+public sealed record AdminInscricaoDto(
+    string Id, string Nome, string Email, int Idade, string Cpf,
+    string CarreiraId, string CarreiraNome, string Protocolo, DateTimeOffset CriadoEm,
+    int ExtraMinutos, bool Enviada, DateTimeOffset? EnviadaEm, int? Percentual,
+    AdminSessaoDto? Sessao);
+
+public sealed record InscricaoAcaoRequest(string? InscricaoId);
+
+public sealed record TempoExtraRequest(string? InscricaoId, int? AdicionarMinutos);
+
+public sealed record PausarRequest(string? InscricaoId, bool Pausar);
 
 // --- Admin ---
 public sealed record ResultadoAdminDto(

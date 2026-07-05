@@ -13,10 +13,10 @@ RUN npm run build
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS api
 WORKDIR /src
 COPY api/*.csproj ./api/
-RUN dotnet restore api/Pcsp.Api.csproj
+RUN dotnet restore api/Pf.Api.csproj
 COPY api/ ./api/
 COPY --from=front /front/dist ./api/wwwroot
-RUN dotnet publish api/Pcsp.Api.csproj -c Release -o /app /p:UseAppHost=false
+RUN dotnet publish api/Pf.Api.csproj -c Release -o /app /p:UseAppHost=false
 
 # 3) Runtime enxuto
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
@@ -25,4 +25,4 @@ COPY --from=api /app ./
 # A maioria das PaaS injeta PORT; default 8080. O banco vem de DATABASE_URL/POSTGRES_CONNECTION_STRING.
 ENV PORT=8080
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "Pcsp.Api.dll"]
+ENTRYPOINT ["dotnet", "Pf.Api.dll"]

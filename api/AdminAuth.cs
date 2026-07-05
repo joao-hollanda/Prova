@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Pcsp.Api;
+namespace Pf.Api;
 
 /// <summary>
 /// Autenticação do painel por SESSÃO. O login confere a senha (segredo do servidor,

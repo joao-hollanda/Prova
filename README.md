@@ -1,6 +1,6 @@
-# Concurso Público PCSP — Ilha em São Paulo (Frontend React)
+# Concurso Público PF — Ilha em São Paulo (Frontend React)
 
-Site de simulação de **concurso público da Polícia Civil do Estado de São Paulo** para uso em
+Site de simulação de **concurso público da Polícia Federal** para uso em
 **RP (roleplay)**. O candidato faz a inscrição, escolhe um cargo e realiza uma prova objetiva +
 discursiva de nível médio, cobrindo as áreas típicas desses certames.
 
@@ -11,7 +11,7 @@ para **consumir uma API em C# (ASP.NET Core)** — basta trocar uma variável de
 
 ## ✨ Funcionalidades
 
-- **Página inicial** com os 4 cargos (Agente, Investigador, Perito, Delegado), vagas e áreas.
+- **Página inicial** com os 4 cargos (Agente, Escrivão, Perito, Delegado), vagas e áreas.
 - **Inscrição** com validação de Nome, E-mail (real), Idade e ID do Discord + escolha do cargo,
   com **checkbox de consentimento** deixando claro que é um RP sem vínculo real.
 - **Prova** específica por cargo + conteúdo comum, com:
@@ -20,7 +20,7 @@ para **consumir uma API em C# (ASP.NET Core)** — basta trocar uma variável de
   - barra de progresso, aviso ao sair da aba e confirmação antes de enviar.
 - **Resultado**: correção automática das objetivas (apenas o desempenho geral; **o gabarito não é
   divulgado**, para evitar cola) e questões discursivas marcadas como **"em análise"** pela banca.
-- **Comprovante em PDF** com os dados do candidato e o resultado, para apresentação na ACADEPOL.
+- **Comprovante em PDF** com os dados do candidato e o resultado, para apresentação na ANP.
 - **Painel administrativo** (`/admin`, protegido por senha) com **ranking em tempo real** e botão
   para **fechar/reabrir a prova** (quando fechada, novos candidatos não conseguem se inscrever/iniciar).
 - Sessão persistida em `localStorage`.
@@ -85,7 +85,7 @@ A API deve expor os endpoints abaixo (prefixo `VITE_API_URL`, ex.: `/api`). Lemb
 
 // response 200/201
 { "id": "guid", "nome": "...", "email": "...", "idade": 25, "cpf": "...",
-  "carreira": "agente", "protocolo": "PCSP-2026-123456", "criadoEm": "2026-06-29T12:00:00Z" }
+  "carreira": "agente", "protocolo": "PF-2026-123456", "criadoEm": "2026-06-29T12:00:00Z" }
 ```
 
 `GET /inscricoes/{id}` — consulta a inscrição. O front chama antes de iniciar a prova para
@@ -93,14 +93,14 @@ validar a sessão salva no navegador (404 = não existe; 409 = de um edital ante
 candidato refaz a inscrição **antes** de responder, e não descobre o problema só no envio.
 
 ### 2. Buscar prova do cargo
-`GET /provas/{carreiraId}`  — `carreiraId` ∈ `agente | investigador | perito | delegado`
+`GET /provas/{carreiraId}`  — `carreiraId` ∈ `agente | escrivao | perito | delegado`
 
 > ⚠️ **Não** retorne o gabarito das questões.
 
 ```jsonc
 // response 200
 {
-  "carreira": "Agente de Polícia",
+  "carreira": "Agente de Polícia Federal",
   "carreiraId": "agente",
   "duracaoMinutos": 90,
   "totalQuestoes": 18,
@@ -156,7 +156,7 @@ candidato refaz a inscrição **antes** de responder, e não descobre o problema
 [
   { "inscricaoId": "guid", "nome": "João da Silva", "email": "joao@exemplo.com",
     "idade": 25, "cpf": "123456789012345678", "carreiraId": "agente",
-    "carreiraNome": "Agente de Polícia", "percentual": 69, "acertos": 9, "total": 13,
+    "carreiraNome": "Agente de Polícia Federal", "percentual": 69, "acertos": 9, "total": 13,
     "aprovadoPreliminar": true, "tempoGastoSegundos": 1830, "enviadoEm": "2026-06-29T12:30:00Z" }
 ]
 ```
@@ -213,9 +213,9 @@ src/
 ## 🧩 Adicionar/editar questões
 
 Edite `src/data/questoes.js`. Há um bloco `COMUM` (todas as carreiras) e blocos específicos
-(`AGENTE`, `INVESTIGADOR`, `PERITO`, `DELEGADO`). Cada questão fechada tem `gabarito` (usado só na
+(`AGENTE`, `ESCRIVAO`, `PERITO`, `DELEGADO`). Cada questão fechada tem `gabarito` (usado só na
 correção, nunca enviado ao candidato).
 
 ---
 
-*Projeto do servidor de roleplay **Ilha em São Paulo**. Sem vínculo oficial com a Polícia Civil do Estado de São Paulo.*
+*Projeto do servidor de roleplay **Ilha em São Paulo**. Sem vínculo oficial com a Polícia Federal.*

@@ -13,6 +13,11 @@ import {
   sortearProva,
   listarDiscursivas,
   corrigirDiscursiva,
+  listarInscricoes,
+  excluirInscricao,
+  excluirResultado,
+  adicionarTempoExtra,
+  pausarSessao,
 } from '../api/admin.js'
 import { CARREIRAS } from '../data/carreiras.js'
 
@@ -131,6 +136,7 @@ function Painel({ onSair }) {
 
   const abas = [
     { id: 'ranking', rotulo: 'Ranking' },
+    { id: 'candidatos', rotulo: 'Candidatos' },
     { id: 'config', rotulo: 'Configuração' },
     { id: 'discursivas', rotulo: 'Correção discursivas' },
   ]
@@ -172,6 +178,7 @@ function Painel({ onSair }) {
       </nav>
 
       {aba === 'ranking' && <Ranking />}
+      {aba === 'candidatos' && <Candidatos />}
       {aba === 'config' && <Configuracao />}
       {aba === 'discursivas' && <Discursivas />}
     </div>
@@ -298,6 +305,213 @@ function Ranking() {
           </table>
         )}
       </div>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Aba: Candidatos (ferramentas de contingência: tempo extra, pausa, exclusões)
+// ----------------------------------------------------------------------------
+function Candidatos() {
+  const [inscricoes, setInscricoes] = useState([])
+  const [carregando, setCarregando] = useState(true)
+  const [agindo, setAgindo] = useState(null) // inscricaoId com ação em andamento
+  const [msg, setMsg] = useState(null)
+  const montadoRef = useRef(true)
+
+  const carregar = useCallback(async () => {
+    try {
+      const lista = await listarInscricoes()
+      if (montadoRef.current) setInscricoes(Array.isArray(lista) ? lista : [])
+    } catch {
+      /* mantém a última lista conhecida */
+    } finally {
+      if (montadoRef.current) setCarregando(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    montadoRef.current = true
+    carregar()
+    const i = setInterval(carregar, INTERVALO_MS)
+    return () => {
+      montadoRef.current = false
+      clearInterval(i)
+    }
+  }, [carregar])
+
+  async function executar(inscricaoId, acao) {
+    setAgindo(inscricaoId)
+    setMsg(null)
+    try {
+      const r = await acao()
+      setMsg({ tipo: 'ok', texto: r?.mensagem || 'Ação concluída.' })
+      await carregar()
+    } catch (err) {
+      setMsg({ tipo: 'erro', texto: err.message || 'Não foi possível concluir a ação.' })
+    } finally {
+      setAgindo(null)
+    }
+  }
+
+  function darTempo(i) {
+    const valor = window.prompt(
+      `Quantos minutos adicionar para ${i.nome}? (use negativo para reduzir)\nTempo extra atual: ${i.extraMinutos} min.`,
+      '15',
+    )
+    if (valor == null) return
+    const minutos = Number(valor)
+    if (!Number.isInteger(minutos) || minutos === 0) {
+      setMsg({ tipo: 'erro', texto: 'Informe um número inteiro de minutos (diferente de zero).' })
+      return
+    }
+    executar(i.id, () => adicionarTempoExtra(i.id, minutos))
+  }
+
+  function pausarOuRetomar(i) {
+    const pausar = !i.sessao?.pausada
+    const texto = pausar
+      ? `Pausar a prova de ${i.nome}? O cronômetro congela e o progresso fica salvo no servidor.`
+      : `Retomar a prova de ${i.nome}? O tempo pausado é devolvido ao cronômetro.`
+    if (!window.confirm(texto)) return
+    executar(i.id, () => pausarSessao(i.id, pausar))
+  }
+
+  function permitirRefazer(i) {
+    if (
+      !window.confirm(
+        `Apagar o RESULTADO de ${i.nome} para que refaça a prova?\nA inscrição é mantida; a prova enviada e a sessão salva são descartadas.`,
+      )
+    )
+      return
+    executar(i.id, () => excluirResultado(i.id))
+  }
+
+  function excluir(i) {
+    if (
+      !window.confirm(
+        `EXCLUIR a inscrição de ${i.nome} (${i.protocolo})?\nApaga inscrição, resultado e sessão — libera o candidato para se inscrever de novo. Esta ação não pode ser desfeita.`,
+      )
+    )
+      return
+    executar(i.id, () => excluirInscricao(i.id))
+  }
+
+  function situacao(i) {
+    if (i.enviada)
+      return <span className="badge badge--apto">Enviada · {i.percentual}%</span>
+    if (i.sessao?.pausada) return <span className="badge badge--analise">Pausada</span>
+    if (i.sessao)
+      return (
+        <span className="badge badge--analise">
+          Em prova · {i.sessao.qtdRespostas} resp.
+        </span>
+      )
+    return <span className="badge badge--inapto">Não iniciou</span>
+  }
+
+  if (carregando) {
+    return (
+      <div className="painel-secao estado-carregando">
+        <div className="spinner" />
+        <p>Carregando candidatos...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="painel-secao">
+      <p className="admin__sub">
+        Ferramentas de contingência: conceda tempo extra, pause/retome uma prova (o progresso
+        fica salvo no servidor), libere um novo envio ou exclua uma inscrição.
+        <span className="admin__live" title="Atualização automática">● ao vivo</span>
+      </p>
+      {msg && (
+        <div className={`alerta ${msg.tipo === 'ok' ? 'alerta--ok' : 'alerta--erro'}`}>{msg.texto}</div>
+      )}
+
+      {inscricoes.length === 0 ? (
+        <div className="alerta alerta--info">Nenhuma inscrição no edital atual.</div>
+      ) : (
+        <div className="admin__tabela-wrap">
+          <table className="ranking">
+            <thead>
+              <tr>
+                <th>Candidato</th>
+                <th>Cargo</th>
+                <th>Protocolo</th>
+                <th className="ta-c">Situação</th>
+                <th className="ta-c">Última atividade</th>
+                <th className="ta-c">Tempo extra</th>
+                <th className="ta-c">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inscricoes.map((i) => (
+                <tr key={i.id}>
+                  <td>
+                    <div className="ranking__nome">{i.nome}</div>
+                    <div className="ranking__email">{i.email} · ID {i.cpf}</div>
+                  </td>
+                  <td>{i.carreiraNome}</td>
+                  <td>{i.protocolo}</td>
+                  <td className="ta-c">{situacao(i)}</td>
+                  <td className="ta-c">
+                    {i.enviada
+                      ? formatarHora(i.enviadaEm)
+                      : i.sessao
+                        ? formatarHora(i.sessao.atualizadoEm)
+                        : formatarHora(i.criadoEm)}
+                  </td>
+                  <td className="ta-c">{i.extraMinutos > 0 ? `+${i.extraMinutos} min` : '—'}</td>
+                  <td className="ta-c">
+                    <div className="acoes-candidato">
+                      {!i.enviada && (
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => darTempo(i)}
+                          disabled={agindo === i.id}
+                          title="Conceder tempo extra (compensa tempo perdido)"
+                        >
+                          + Tempo
+                        </button>
+                      )}
+                      {!i.enviada && i.sessao && (
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => pausarOuRetomar(i)}
+                          disabled={agindo === i.id}
+                          title="Pausar/retomar a prova (o progresso fica salvo)"
+                        >
+                          {i.sessao.pausada ? 'Retomar' : 'Pausar'}
+                        </button>
+                      )}
+                      {i.enviada && (
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => permitirRefazer(i)}
+                          disabled={agindo === i.id}
+                          title="Apaga o resultado para o candidato refazer a prova"
+                        >
+                          Refazer
+                        </button>
+                      )}
+                      <button
+                        className="btn btn--perigo btn--sm"
+                        onClick={() => excluir(i)}
+                        disabled={agindo === i.id}
+                        title="Exclui inscrição, resultado e sessão"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

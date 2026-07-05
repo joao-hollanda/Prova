@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Tema — Concurso Polícia Civil de SP (RP)
+   Tema — Concurso Polícia Federal (RP)
    Azul institucional + dourado, visual de portal oficial.
    =========================================================================== */
 :root {
@@ -446,6 +446,7 @@ h1, h2, h3 { color: var(--azul-800); line-height: 1.2; margin: 0 0 .5rem; }
   margin-bottom: 18px;
 }
 .config-acoes { margin-top: 18px; display: flex; justify-content: flex-end; }
+.acoes-candidato { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
 .mini-input { width: 84px; padding: 6px 8px; text-align: center; border: 1px solid var(--cinza-200); border-radius: var(--raio-sm); }
 
 .sorteio-box {
